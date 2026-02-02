@@ -1,0 +1,112 @@
+.event-page {
+  padding: 40px 6vw 80px;
+}
+
+.event-hero {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: center;
+  margin-bottom: 40px;
+}
+
+.event-hero h1 {
+  font-family: "Fraunces", serif;
+  font-size: clamp(2.2rem, 3vw + 1.2rem, 3.4rem);
+  margin: 12px 0;
+}
+
+.event-card {
+  background: #fff1e2;
+  border-radius: 22px;
+  padding: 22px;
+  border: 1px solid rgba(15, 14, 10, 0.08);
+  box-shadow: 0 18px 40px rgba(231, 92, 62, 0.15);
+}
+
+.event-card ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.event-form {
+  background: #fff7ef;
+  border-radius: 28px;
+  padding: 28px;
+  border: 1px solid rgba(15, 14, 10, 0.08);
+}
+
+.event-form .form-embed {
+  width: 100%;
+}
+
+.event-form .form-embed iframe {
+  width: 100%;
+  min-height: 1400px;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.event-form form {
+  display: grid;
+  gap: 18px;
+}
+
+.event-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.event-form input,
+.event-form select,
+.event-form textarea {
+  border-radius: 14px;
+  border: 1px solid rgba(15, 14, 10, 0.2);
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  background: #fff;
+}
+
+.event-form textarea {
+  resize: vertical;
+}
+
+.event-form .form-status {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.event-form .form-status.success {
+  color: #2b6b4b;
+}
+
+.event-form .form-status.error {
+  color: #b23c2a;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 20, 15, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.modal-card {
+  background: #fff7ef;
+  border-radius: 22px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(44, 20, 10, 0.2);
+  display: grid;
+  gap: 12px;
+}

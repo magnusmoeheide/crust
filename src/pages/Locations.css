@@ -1,0 +1,72 @@
+.locations-page {
+  padding: 40px 6vw 80px;
+}
+
+.locations-hero {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: center;
+  margin-bottom: 40px;
+}
+
+.locations-hero h1 {
+  font-family: "Fraunces", serif;
+  font-size: clamp(2.2rem, 3vw + 1.2rem, 3.4rem);
+  margin: 12px 0;
+}
+
+.locations-card {
+  background: #fff1e2;
+  border-radius: 22px;
+  padding: 22px;
+  border: 1px solid rgba(15, 14, 10, 0.08);
+  box-shadow: 0 18px 40px rgba(231, 92, 62, 0.15);
+}
+
+.locations-card ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.locations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.locations-grid article {
+  background: #fff7ef;
+  border-radius: 20px;
+  padding: 20px;
+  border: 1px solid rgba(15, 14, 10, 0.08);
+  display: grid;
+  gap: 6px;
+}
+
+.locations-grid img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 16px;
+}
+
+.locations-grid h3 {
+  margin: 0;
+}
+
+.locations-grid p {
+  margin: 0;
+}
+
+.locations-grid .location-neighborhood {
+  margin-bottom: 6px;
+}
+
+.locations-grid .location-cta {
+  justify-self: stretch;
+  text-align: center;
+  margin-top: 8px;
+  padding: 6px 14px;
+}

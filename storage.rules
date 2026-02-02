@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isCrustUser() {
+      return request.auth != null
+        && (
+          (request.auth.token.email != null
+            && request.auth.token.email.matches('^.+@crust\\.no$')) ||
+          (request.auth.token.preferred_username != null
+            && request.auth.token.preferred_username.matches('^.+@crust\\.no$'))
+        );
+    }
+
+    match /applications/videos/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 50 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+      allow read: if isCrustUser();
+    }
+
+    match /forms/images/{formId}/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow read: if isCrustUser();
+    }
+  }
+}
