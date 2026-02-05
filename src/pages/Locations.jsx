@@ -1,51 +1,55 @@
 import "./Locations.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot } from "@fortawesome/free-solid-svg-icons";
-import foodtruckImage from "../assets/Foodtruck.png";
+import foodtruck600 from "../assets/optimized/foodtruck-600.png";
+import foodtruck1200 from "../assets/optimized/foodtruck-1200.png";
 
 function Locations() {
   const placeholder =
     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600' viewBox='0 0 600 600'><rect width='600' height='600' fill='%23fff1e2'/><rect x='40' y='40' width='520' height='520' rx='28' fill='%23ffe1c8' stroke='%23e75c3e' stroke-width='6'/><text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='28' fill='%231c140f'>Crust Foodtruck</text><text x='50%' y='56%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='16' fill='%235f4c3f'>Bilde kommer</text></svg>";
 
-  const trucks = Array.from({ length: 9 }, (_, index) => ({
+  const trucks = Array.from({ length: 10 }, (_, index) => ({
     id: index + 1,
     name: `Crust Foodtruck ${index + 1}`,
     neighborhood: [
-      "Sentrum",
-      "Elvebyen",
-      "Nordpark",
-      "Østmarkedet",
-      "Sydhøyden",
-      "Sjøsiden",
-      "Kunstkvartalet",
-      "Gamlebyen",
-      "Havnepunktet",
-      "Katten",
+      "Oslo",
+      "Oslo",
+      "Oslo",
+      "Oslo",
+      "Oslo",
+      "Oslo",
+      "Oslo",
+      "Oslo",
+      "Bergen",
+      "Gjøvik",
     ][index],
     hours: {
       weekday: "Man-Fre: 11:00-21:00",
       weekend: "Lør-Søn: 12:00-20:00",
     },
-    photo: foodtruckImage,
+    photo: {
+      src: foodtruck600,
+      srcSet: `${foodtruck600} 600w, ${foodtruck1200} 1200w`,
+    },
   }));
 
   return (
     <div className="locations-page">
       <header className="locations-hero">
         <div>
-          <p className="eyebrow">Ni foodtrucks, ett oppdrag</p>
+          <p className="eyebrow">Ti foodtrucks, en mission!</p>
           <h1>Finn en Crust Foodtruck</h1>
           <p className="lead">
-            Våre 10 foodtrucks bringer Crust n Trust til nabolag over hele byen.
-            Hvert stopp støtter ungdommens første jobb og opplæring.
+            Våre 10 foodtrucks bringer Crust n' Trust til nabolag over hele Oslo
+            - og litt utenfor! Ta turen innom for en smak av vår crusty pizza.
           </p>
         </div>
         <div className="locations-card">
           <h2>2026</h2>
           <ul>
             <li>10 aktive vogner</li>
-            <li>Daglig servering 11:00-21:00</li>
-            <li>Skolearrangementer + catering</li>
+            <li>Daglig servering</li>
+            <li>Åpner fra 7. april og utover måneden!</li>
           </ul>
         </div>
       </header>
@@ -53,7 +57,14 @@ function Locations() {
       <section className="locations-grid">
         {trucks.map((truck) => (
           <article key={truck.id}>
-            <img src={truck.photo} alt={`${truck.name} fasade`} />
+            <img
+              src={truck.photo.src}
+              srcSet={truck.photo.srcSet}
+              sizes="(max-width: 700px) 90vw, 320px"
+              alt={`${truck.name} fasade`}
+              loading="lazy"
+              decoding="async"
+            />
             <h3>{truck.name}</h3>
             <p className="location-neighborhood">
               <FontAwesomeIcon icon={faLocationDot} /> {truck.neighborhood}
@@ -61,12 +72,10 @@ function Locations() {
             <p>{truck.hours.weekday}</p>
             <p>{truck.hours.weekend}</p>
             <a
-              className="ghost location-cta"
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                `${truck.name} ${truck.neighborhood}`,
-              )}`}
-              target="_blank"
-              rel="noreferrer"
+              className="ghost location-cta is-disabled"
+              href="#"
+              aria-disabled="true"
+              tabIndex={-1}
             >
               Ta meg dit
             </a>

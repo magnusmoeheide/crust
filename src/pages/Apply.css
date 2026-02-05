@@ -26,6 +26,10 @@
   gap: 10px;
 }
 
+.apply-card span {
+    color: var(--muted);
+}
+
 .apply-card ul {
   margin: 12px 0 0;
   padding-left: 18px;
@@ -51,6 +55,31 @@
   content: "•";
   color: var(--accent-dark);
   font-weight: 700;
+}
+
+.apply-card .apply-and {
+  width: 64px;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(47, 111, 222, 0.15);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 0;
+  color: #2f6fde;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.apply-card .apply-and-line {
+  align-items: center;
+}
+
+.apply-card .apply-and-line::before {
+  content: "";
 }
 
 .apply-card .apply-or {

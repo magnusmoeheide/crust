@@ -1,20 +1,20 @@
-import { useEffect } from 'react'
-import './Event.css'
+import { useEffect } from "react";
+import "./Event.css";
 
 function Event() {
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     const reset = window.setTimeout(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
-    }, 100)
-    return () => window.clearTimeout(reset)
-  }, [])
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }, 100);
+    return () => window.clearTimeout(reset);
+  }, []);
 
   return (
     <div className="event-page">
       <header className="event-hero">
         <div>
-          <p className="eyebrow">Crust n Trust på ditt arrangement</p>
+          <p className="eyebrow">Crust n' Trust på ditt arrangement</p>
           <h1>Bestill Crust pizzaservering</h1>
           <p className="lead">
             La ungdommene våre stå for serveringen. Vi leverer varme pizzaer,
@@ -24,9 +24,9 @@ function Event() {
         <div className="event-card">
           <h2>Passer for</h2>
           <ul>
-            <li>Skoler og elevråd</li>
-            <li>Bedrifter og kickoff</li>
-            <li>Nabolagseventer</li>
+            <li>Lunsj, firmafest eller arrangement for din bedrift</li>
+            <li>Skoleklasser, lag og foreninger</li>
+            <li>Nabolag, ___, eller andre sammenkomster</li>
           </ul>
         </div>
       </header>
@@ -43,7 +43,7 @@ function Event() {
         </div>
       </section>
     </div>
-  )
+  );
 }
 
-export default Event
+export default Event;

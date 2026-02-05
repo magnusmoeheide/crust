@@ -5,7 +5,7 @@ function Apply() {
     <div className="apply-page">
       <header className="apply-hero">
         <div>
-          <p className="eyebrow">Første jobb, ekte støtte</p>
+          <p className="eyebrow">En inngang til arbeidslivet</p>
           <h1>Søk jobb hos Crust</h1>
           <p className="lead">
             Vi ansetter ungdom i deres aller første jobb og gir betalt
@@ -14,14 +14,16 @@ function Apply() {
         </div>
         <div className="apply-card">
           <h2>Er dette deg?</h2>
-          <ul className="apply-list">
-            <li>Du er mellom 15 og 19 år</li>
-            <li>Du går ikke på skole</li>
-          </ul>
+
+          <span>Du er mellom 15 og 19 år</span>
+
+          <span className="apply-and">og</span>
+
+          <span>1. Du går ikke på skole</span>
+
           <span className="apply-or">ELLER</span>
-          <ul className="apply-list">
-            <li>Du har et behov for å tjene egne penger</li>
-          </ul>
+
+          <span>2. Du har et behov for å tjene egne penger</span>
         </div>
       </header>
 

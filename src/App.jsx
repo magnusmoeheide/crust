@@ -1,4 +1,5 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, Link } from "react-router-dom";
+import { useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUserGraduate,
@@ -11,52 +12,68 @@ import Locations from "./pages/Locations";
 import Partners from "./pages/Partners";
 import About from "./pages/About";
 import Event from "./pages/Event";
-import alesundImage from "./assets/Ålesund.jpg";
-import pizzaImage from "./assets/pizza.jpeg";
-import pizzaTwoImage from "./assets/pizza2.jpeg";
-import prosessImage from "./assets/Prosess.png";
+import Frende from "./pages/Frende";
+import Contact from "./pages/Contact";
+import alesund600 from "./assets/optimized/alesund-600.jpg";
+import alesund1200 from "./assets/optimized/alesund-1200.jpg";
+import pizza2_480 from "./assets/optimized/pizza2-480.jpeg";
+import pizza2_960 from "./assets/optimized/pizza2-960.jpeg";
+import pizza2_1600 from "./assets/optimized/pizza2-1600.jpeg";
+import prosess600 from "./assets/optimized/prosess-600.png";
+import prosess1200 from "./assets/optimized/prosess-1200.png";
 import "./App.css";
 
 function Home() {
   const placeholder =
     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='900' height='700' viewBox='0 0 900 700'><rect width='900' height='700' fill='%23fff1e2'/><rect x='50' y='50' width='800' height='600' rx='32' fill='%23ffe1c8' stroke='%23e75c3e' stroke-width='6'/><text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='30' fill='%231c140f'>Crust Pizza</text><text x='50%' y='56%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='18' fill='%235f4c3f'>Bilde kommer</text></svg>";
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    const timer = window.setTimeout(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <>
       <section className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">Nabolagsdrevet pizza i hver eneste bit</p>
+          <p className="eyebrow">Kvalitet og mening i hver bit</p>
           <h1>
-            Crust bygger selvsikre tenåringer med ekte jobb, ekte lønn og den
-            beste pizzaen i byen.
+            Crust gir muligheter til ungdom - og den beste pizzaen i byen.
           </h1>
           <p className="lead">
-            Vi er pizzastedet der første jobber starter sterkt. I 2025 ga vi 100
-            tenåringer sin aller første jobb, med solid opplæring og
-            legendariske pizzaer.
+            Vi er pizzastedet der første jobber starter sterkt. I 2025 ga vi
+            under navnet Toastmasters 100 ungdom sin aller første jobb, og en
+            mulighet til å ta steget videre. Nå er vi Crust n' Trust, hvor vi
+            sikter på å gi nye 100 ungdom dobbelt så mye erfaring, mestring og
+            muligheter, samtidig som vi serverer nydelig pizza.
           </p>
           <div className="hero-actions">
-            <button className="cta">Bestill for henting</button>
+            <Link className="cta" to="/plasseringer">
+              Bestill for levering nå!
+            </Link>
             <a className="ghost" href="/event">
-              Bestill pizza-servering
+              Bestill for et event
             </a>
           </div>
           <div className="hero-notes">
             <span>Tidligere Toastmasters</span>
             <span>Ansetter 15-19 år</span>
-            <span>Etter-skoletid og helgevakter</span>
+            <span>Jobb både i skoletid og utenfor skoletid</span>
           </div>
         </div>
         <div className="hero-media">
           <img
             className="hero-main"
-            src={placeholder}
+            src={pizza2_960}
+            srcSet={`${pizza2_480} 480w, ${pizza2_960} 960w, ${pizza2_1600} 1600w`}
+            sizes="(max-width: 700px) 92vw, (max-width: 1200px) 50vw, 700px"
             alt="Fersk pizza på en treplate"
+            decoding="async"
+            fetchPriority="high"
           />
-          <div className="hero-grid">
-            <img src={pizzaTwoImage} alt="Pizza klar for servering" />
-            <img src={pizzaImage} alt="Nystekt pizza" />
-          </div>
         </div>
       </section>
 
@@ -109,8 +126,12 @@ function Home() {
           </p>
           <img
             className="program-image"
-            src={prosessImage}
+            src={prosess600}
+            srcSet={`${prosess600} 600w, ${prosess1200} 1200w`}
+            sizes="(max-width: 900px) 90vw, 520px"
             alt="Prosess for første jobb hos Crust"
+            loading="lazy"
+            decoding="async"
           />
         </div>
         <div className="program-steps">
@@ -127,49 +148,20 @@ function Home() {
               <span className="step-number">2</span> Tjen og lær
             </h3>
             <p>
-              Betalt opplæring, tilbakemelding og en fantastisk mulighet for
+              Jobb med tariff-lønn, veiledning, og en fantastisk mulighet for
               erfaring.
             </p>
           </div>
           <div>
             <h3>
-              <span className="step-number">3</span> Karriereløft
+              <span className="step-number">3</span> Steget videre
             </h3>
-            <p>CV-støtte, anbefalingsbrev og alumni-oppfølging.</p>
+            <p>Få hjelp til CV-støtte, anbefalingsbrev og alumni-oppfølging.</p>
           </div>
-        </div>
-      </section>
-
-      <section className="gallery">
-        <div className="section-header">
-          <h2>Inne hos Crust</h2>
-          <p>Varme ovner, modige smaker og et team som lærer sammen.</p>
-        </div>
-        <div className="photo-grid">
-          <img src={placeholder} alt="Ostestring fra pizzastykke" />
-          <img src={placeholder} alt="Pizzeria med varm belysning" />
-          <img src={placeholder} alt="Hender som strekker pizzadeig" />
-          <img
-            src={placeholder}
-            alt="Kjøkkenteam som forbereder ingredienser"
-          />
         </div>
       </section>
 
       <section id="historie" className="story">
-        <div className="story-card">
-          <div className="story-text">
-            <h2>Fra Toastmasters til Crust</h2>
-            <p>
-              Vi startet som Toastmasters, en lokalt forankret toastvogn med
-              store ambisjoner. Da ungdomsprogrammet vårt vokste, rebrandet vi
-              til Crust med servering av pizza.
-            </p>
-          </div>
-          <div className="story-image">
-            <img src={alesundImage} alt="Utsikt over Ålesund" />
-          </div>
-        </div>
         <div className="story-milestones">
           <div>
             <span>2024</span>
@@ -194,6 +186,26 @@ function Home() {
             </p>
           </div>
         </div>
+        <div className="story-card">
+          <div className="story-text">
+            <h2>Fra Toastmasters til Crust n' Trust</h2>
+            <p>
+              Vi startet som Toastmasters, en lokalt forankret toastvogn med
+              store ambisjoner. Da ungdomsprogrammet vårt vokste, rebrandet vi
+              til Crust med servering av pizza.
+            </p>
+          </div>
+          <div className="story-image">
+            <img
+              src={alesund600}
+              srcSet={`${alesund600} 600w, ${alesund1200} 1200w`}
+              sizes="(max-width: 900px) 90vw, 520px"
+              alt="Utsikt over Ålesund"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        </div>
       </section>
 
       <section id="visit" className="visit">
@@ -202,14 +214,15 @@ function Home() {
           <p>
             Kom innom for den beste pizzaen, eller book Crust for et
             arrangement. <br />
-            Hver bestilling støtter en ungdom i sin aller første jobb!
+            Hver slice støtter en ungdom i sin aller første jobb!
           </p>
           <div className="visit-actions">
             <a className="cta" href="/event">
               Bestill servering
             </a>
-            <a className="ghost" href="/jobb">
-              Søk jobb
+
+            <a className="ghost" href="/plasseringer">
+              Hvor finner du oss
             </a>
           </div>
         </div>
@@ -227,6 +240,8 @@ function App() {
         <Route path="/plasseringer" element={<Locations />} />
         <Route path="/partnere" element={<Partners />} />
         <Route path="/event" element={<Event />} />
+        <Route path="/frende" element={<Frende />} />
+        <Route path="/kontakt" element={<Contact />} />
         <Route path="/om-oss" element={<About />} />
       </Route>
     </Routes>

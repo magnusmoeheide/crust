@@ -1,9 +1,14 @@
 import "./About.css";
-import christianImage from "../assets/Christian.png";
-import haakonImage from "../assets/Haakon.jpeg";
-import magnusImage from "../assets/Magnus.jpeg";
-import josteinImage from "../assets/Jostein.jpeg";
-import historieImage from "../assets/Historie.jpeg";
+import christian300 from "../assets/optimized/christian-300.png";
+import christian600 from "../assets/optimized/christian-600.png";
+import haakon300 from "../assets/optimized/haakon-300.jpeg";
+import haakon600 from "../assets/optimized/haakon-600.jpeg";
+import magnus300 from "../assets/optimized/magnus-300.jpeg";
+import magnus600 from "../assets/optimized/magnus-600.jpeg";
+import jostein300 from "../assets/optimized/jostein-300.jpeg";
+import jostein600 from "../assets/optimized/jostein-600.jpeg";
+import historie600 from "../assets/optimized/historie-600.jpeg";
+import historie1200 from "../assets/optimized/historie-1200.jpeg";
 
 function About() {
   const placeholder =
@@ -13,27 +18,38 @@ function About() {
     {
       name: "Magnus Heide",
       role: "Gründer og Daglig leder",
-      focus:
-        "Leder driften, følger opp ungdommen og sikrer god kundeopplevelse.",
-      image: magnusImage,
+      focus: "magnus@crust.no | +47 958 85 852",
+      image: {
+        src: magnus600,
+        srcSet: `${magnus300} 300w, ${magnus600} 600w`,
+      },
     },
     {
       name: "Haakon Aarseth",
       role: "Partneransvarlig",
-      focus: "Utvikler samarbeid med bedrifter og relevante aktører.",
-      image: haakonImage,
+      focus: "haakon@crust.no | +47 473 88 646",
+      image: {
+        src: haakon600,
+        srcSet: `${haakon300} 300w, ${haakon600} 600w`,
+      },
     },
     {
       name: "Christian Træland",
       role: "Gründer og Styremedlem",
-      focus: "Setter strategi og støtter ledelsen.",
-      image: christianImage,
+      focus: "christian@licc.no",
+      image: {
+        src: christian600,
+        srcSet: `${christian300} 300w, ${christian600} 600w`,
+      },
     },
     {
       name: "Jostein",
       role: "Styreleder",
-      focus: "Sikrer god styring, prioriteringer og langsiktig retning.",
-      image: josteinImage,
+      focus: "jostein@licc.no",
+      image: {
+        src: jostein600,
+        srcSet: `${jostein300} 300w, ${jostein600} 600w`,
+      },
     },
   ];
 
@@ -50,7 +66,7 @@ function About() {
           </p>
         </div>
         <div className="about-card">
-          <h2>Crust n Trust</h2>
+          <h2>Crust n' Trust</h2>
           <p>
             Vi gir ungdom ansvar for egen butikk, samtidig som vi tilbyr tett
             oppfølging og opplæring. Resultatet er bedre ferdigheter, sterkere
@@ -97,7 +113,14 @@ function About() {
             </div>
           </div>
           <div className="history-media">
-            <img src={historieImage} alt="Crust sin historie i bilder" />
+            <img
+              src={historie600}
+              srcSet={`${historie600} 600w, ${historie1200} 1200w`}
+              sizes="(max-width: 900px) 90vw, 520px"
+              alt="Crust sin historie i bilder"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </div>
       </section>
@@ -113,8 +136,12 @@ function About() {
           {team.map((member) => (
             <article key={member.name}>
               <img
-                src={member.image || placeholder}
+                src={member.image?.src || placeholder}
+                srcSet={member.image?.srcSet}
+                sizes="(max-width: 700px) 80vw, 260px"
                 alt={`Portrett av ${member.name}`}
+                loading="lazy"
+                decoding="async"
               />
               <div className="team-card">
                 <h3>{member.name}</h3>
