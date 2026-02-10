@@ -16,6 +16,8 @@ import About from "./pages/About";
 import Event from "./pages/Event";
 import Frende from "./pages/Frende";
 import Contact from "./pages/Contact";
+import Forms from "./pages/Forms";
+import FormPage from "./pages/FormPage";
 import alesund600 from "./assets/optimized/alesund-600.jpg";
 import alesund1200 from "./assets/optimized/alesund-1200.jpg";
 import pizza2_480 from "./assets/optimized/pizza2-480.jpeg";
@@ -268,6 +270,10 @@ function App() {
         <Route path="/frende" element={<Frende />} />
         <Route path="/kontakt" element={<Contact />} />
         <Route path="/om-oss" element={<About />} />
+        <Route path="/skjema" element={<Forms />} />
+        <Route path="/skjema/:formSlug" element={<FormPage />} />
+        <Route path="/skjema/:formSlug/submissions" element={<FormPage />} />
+        <Route path="/skjema/:formSlug/edit" element={<FormPage />} />
       </Route>
     </Routes>
   );

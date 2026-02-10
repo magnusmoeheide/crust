@@ -92,8 +92,11 @@ function Layout() {
       "/jobb": "Søk jobb",
       "/frende": "Frende",
       "/kontakt": "Kontakt",
+      "/skjema": "Skjemaer",
     };
-    const pageTitle = titleMap[location.pathname];
+    const pageTitle = location.pathname.startsWith("/skjema/")
+      ? "Skjema"
+      : titleMap[location.pathname];
     document.title = pageTitle
       ? `Crust n' Trust | ${pageTitle}`
       : "Crust n' Trust";

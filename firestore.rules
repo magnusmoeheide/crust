@@ -30,7 +30,7 @@ service cloud.firestore {
     match /formSubmissions/{docId} {
       allow create: if true;
       allow read, delete: if isCrustUser();
-      allow update: if false;
+      allow update: if isCrustUser();
     }
 
   }
