@@ -3,6 +3,7 @@ import frendeLogo from "../assets/Frende-logo.png";
 import navLogo from "../assets/nav-logo.png";
 import varigLogo from "../assets/varig-hadeland.webp";
 import obosLogo from "../assets/obos-logo.png";
+import osloKommuneLogo from "../assets/oslo-kommune.png";
 import "./Partners.css";
 
 function Partners() {
@@ -13,37 +14,33 @@ function Partners() {
     {
       name: "Frende Forsikring",
       focus:
-        "Hovedpartner. Økonomisk bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom.",
+        "Vår hovedpartner.\nFrende har gjort betydelige økonomiske bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom.",
       logo: frendeLogo,
     },
     {
       name: "Varig Hadeland Forsikring",
       focus:
-        "Med for første gang i 2026 og deler en vogn med Frende i Gjøvik.",
+        "Med for første gang i 2026, \nog deler 1 vogn med Frende i Gjøvik.",
       logo: varigLogo,
     },
     {
       name: "OBOS",
       focus:
-        "Har 1 vogn som gir arbeidsplass til 10 ungdom hvert år. Med oss siden 2024.",
+        "Har hatt 1 vogn siden 2025, \nsom gir arbeidsplass til 10 ungdom hvert år.",
       logo: obosLogo,
     },
     {
       name: "NAV",
-      focus: "Stipender til kokketrening og mentoring.",
+      focus:
+        "Samarbeid om rekruttering, opplæring \nog oppfølging av ungdom i jobb.",
       logo: navLogo,
     },
+
     {
-      name: "Nabolagets næringsallianse",
-      focus: "Lokale leverandører og fellesskapseventer.",
-    },
-    {
-      name: "First Paycheck Initiative",
-      focus: "Økonomiopplæring for tenåringer.",
-    },
-    {
-      name: "Lokalt helsesenter",
-      focus: "Helse- og sikkerhetsopplæring for unge ansatte.",
+      name: "Oslo kommune",
+      focus:
+        "Samarbeidspartner for lokale muligheter, \naktivitet og ungdom i arbeid.",
+      logo: osloKommuneLogo,
     },
   ];
 
@@ -58,7 +55,7 @@ function Partners() {
       <header className="partners-hero">
         <div>
           <p className="eyebrow">Crust n' Trust - sammen</p>
-          <h1>Våre samarbeidspartnere</h1>
+          <h1>Våre partnere</h1>
           <p className="lead">
             Vi samarbeider med private bedrifter og det offentlige for å gi
             ungdom en mulighet til sin første jobb, et reelt støttenettverk, og
@@ -66,11 +63,13 @@ function Partners() {
           </p>
         </div>
         <div className="partners-card">
-          <h2>Sammen med våre partnere gir vi:</h2>
+          <h2>
+            <i class="fa-solid fa-handshake"></i> Sammen gir vi:
+          </h2>
           <ul>
-            <li>Arbeidslivstrening + mentoring</li>
-            <li>Stipender + videre utdanning</li>
-            <li>Nabolagseventer + catering</li>
+            <li>Arbeidslivstrening og mentoring</li>
+            <li>Videre utdanning og muligheter</li>
+            <li>Nabolagseventer og catering</li>
           </ul>
         </div>
       </header>
@@ -87,13 +86,17 @@ function Partners() {
             >
               <img
                 className={
-                  partner.name === "OBOS"
-                    ? "partner-logo obos-logo"
-                    : partner.name === "Varig Hadeland Forsikring"
-                      ? "partner-logo varig-logo"
-                      : partner.name === "NAV"
-                        ? "partner-logo nav-logo"
-                        : "partner-logo"
+                  partner.name === "Frende Forsikring"
+                    ? "partner-logo frende-logo"
+                    : partner.name === "OBOS"
+                      ? "partner-logo obos-logo"
+                      : partner.name === "Varig Hadeland Forsikring"
+                        ? "partner-logo varig-logo"
+                        : partner.name === "NAV"
+                          ? "partner-logo nav-logo"
+                          : partner.name === "Oslo kommune"
+                            ? "partner-logo oslo-logo"
+                            : "partner-logo"
                 }
                 src={partner.logo ?? placeholder}
                 alt={`${partner.name} logo`}

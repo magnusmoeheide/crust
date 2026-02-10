@@ -3,11 +3,40 @@ import "./Event.css";
 
 function Event() {
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    const reset = window.setTimeout(() => {
+    let userInteracted = false;
+    const forceTop = () => {
       window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    }, 100);
-    return () => window.clearTimeout(reset);
+    };
+    const markInteracted = () => {
+      userInteracted = true;
+    };
+    const keepTopIfNeeded = () => {
+      if (!userInteracted && window.scrollY > 120) {
+        forceTop();
+      }
+    };
+
+    forceTop();
+    const resetSoon = window.setTimeout(forceTop, 100);
+    const resetLater = window.setTimeout(forceTop, 450);
+    const unlock = window.setTimeout(() => {
+      userInteracted = true;
+    }, 2500);
+
+    window.addEventListener("scroll", keepTopIfNeeded, { passive: true });
+    window.addEventListener("wheel", markInteracted, { passive: true });
+    window.addEventListener("touchstart", markInteracted, { passive: true });
+    window.addEventListener("keydown", markInteracted);
+
+    return () => {
+      window.clearTimeout(resetSoon);
+      window.clearTimeout(resetLater);
+      window.clearTimeout(unlock);
+      window.removeEventListener("scroll", keepTopIfNeeded);
+      window.removeEventListener("wheel", markInteracted);
+      window.removeEventListener("touchstart", markInteracted);
+      window.removeEventListener("keydown", markInteracted);
+    };
   }, []);
 
   return (
@@ -18,21 +47,22 @@ function Event() {
           <h1>Bestill Crust pizzaservering</h1>
           <p className="lead">
             La ungdommene våre stå for serveringen. Vi leverer varme pizzaer,
-            profesjonell service og en opplevelse som støtter første jobber.
+            profesjonell service og en opplevelse som støtter ungdom i jobb.
           </p>
         </div>
         <div className="event-card">
-          <h2>Passer for</h2>
+          <h2>
+            <i class="fa-solid fa-pizza-slice"></i> Passer for ...
+          </h2>
           <ul>
             <li>Lunsj, firmafest eller arrangement for din bedrift</li>
             <li>Skoleklasser, lag og foreninger</li>
-            <li>Nabolag, ___, eller andre sammenkomster</li>
+            <li>Nabolag eller andre sammenkomster</li>
           </ul>
         </div>
       </header>
 
       <section className="event-form">
-        <h2>Bestilling</h2>
         <div className="form-embed">
           <iframe
             title="Bestillingsskjema"

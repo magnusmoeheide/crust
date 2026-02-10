@@ -31,7 +31,9 @@ function Contact() {
           </p>
         </div>
         <div className="contact-card">
-          <h2>Kontaktinfo</h2>
+          <h2>
+            <i class="fa-regular fa-address-book"></i> Kontaktinfo
+          </h2>
           <p>
             <strong>E-post:</strong>{" "}
             <a href="mailto:hei@crust.no">hei@crust.no</a>
@@ -50,10 +52,7 @@ function Contact() {
           <h3>
             <FontAwesomeIcon icon={faBriefcase} /> Jobb
           </h3>
-          <p>
-            For søknader, bruk skjemaet vårt. Vi kan dessverre ikke ta imot
-            søknader på telefon eller e-post.
-          </p>
+          <p>For søknader, bruk skjemaet vårt.</p>
           <a className="ghost" href="/jobb">
             Søk jobb
           </a>
@@ -155,7 +154,7 @@ function Contact() {
               <a href="mailto:haakon@crust.no">haakon@crust.no</a>
             </p>
             <p>
-              <strong>Telefon:</strong> +47 000 00 000
+              <strong>Telefon:</strong> +47 473 88 646
             </p>
             <br />
           </div>

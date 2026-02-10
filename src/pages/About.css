@@ -1,5 +1,5 @@
 .about-page {
-  padding: 64px 6vw 80px;
+  padding: 40px 6vw 80px;
   display: flex;
   flex-direction: column;
   gap: 56px;
@@ -20,7 +20,6 @@
 }
 
 .about-card h2 {
-  font-family: "Fraunces", serif;
   margin-top: 0;
 }
 
@@ -100,6 +99,14 @@
 .team-card p {
   margin: 0;
   color: var(--muted);
+}
+
+.about-hero h1 {
+  font-family: "Fraunces", serif;
+  font-size: clamp(2.2rem, 3vw + 1.2rem, 3.4rem);
+  margin: 18px 0 10px;
+  line-height: 1.06;
+  letter-spacing: -0.01em;
 }
 
 @media (max-width: 720px) {

@@ -45,7 +45,9 @@ function Locations() {
           </p>
         </div>
         <div className="locations-card">
-          <h2>2026</h2>
+          <h2>
+            <i class="fa-regular fa-truck"></i> 2026
+          </h2>
           <ul>
             <li>10 aktive vogner</li>
             <li>Daglig servering</li>

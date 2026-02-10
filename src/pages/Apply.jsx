@@ -1,3 +1,5 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faArrowUpRightFromSquare } from "@fortawesome/free-solid-svg-icons";
 import "./Apply.css";
 
 function Apply() {
@@ -7,13 +9,12 @@ function Apply() {
         <div>
           <p className="eyebrow">En inngang til arbeidslivet</p>
           <h1>Søk jobb hos Crust</h1>
-          <p className="lead">
-            Vi ansetter ungdom i deres aller første jobb og gir betalt
-            opplæring, mentorer og fleksible vakter.
-          </p>
+          <p className="lead">Vi ansetter ungdom i deres aller første jobb!</p>
         </div>
         <div className="apply-card">
-          <h2>Er dette deg?</h2>
+          <h2>
+            <i class="fa-solid fa-person-walking"></i> Er dette deg?
+          </h2>
 
           <span>Du er mellom 15 og 19 år</span>
 
@@ -37,7 +38,7 @@ function Apply() {
             target="_blank"
             rel="noreferrer"
           >
-            Klikk for å søke
+            Klikk for å søke <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
           </a>
         </div>
       </section>

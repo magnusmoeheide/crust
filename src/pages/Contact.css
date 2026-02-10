@@ -13,8 +13,9 @@
 .contact-hero h1 {
   font-family: "Fraunces", serif;
   font-size: clamp(2.2rem, 3vw + 1.2rem, 3.4rem);
-  margin: 12px 0;
-  line-height: 1.05;
+  margin: 18px 0 10px;
+  line-height: 1.06;
+  letter-spacing: -0.01em;
 }
 
 .contact-card {
@@ -24,7 +25,11 @@
   border: 1px solid rgba(15, 14, 10, 0.08);
   box-shadow: 0 18px 40px rgba(231, 92, 62, 0.15);
   display: grid;
-  line-height: 0.5;
+}
+
+.contact-card p {
+  line-height: 1.4;
+  margin: 0;
 }
 
 .contact-card a {
@@ -48,6 +53,8 @@
   padding: 20px;
   border: 1px solid rgba(15, 14, 10, 0.08);
   display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 10px;
 }
 
 .contact-grid .ghost,
@@ -56,19 +63,18 @@
   color: var(--ink);
   border: 1px solid #fb7f59;
   box-shadow: none;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1.1;
-  min-height: 48px;
+  height: 52px;
   padding: 12px 22px;
   text-decoration: none;
-}
-
-.contact-grid .cta {
-  color: var(--accent-ink);
-  background: var(--accent);
-  border-color: var(--accent);
+  width: 100%;
+  justify-self: stretch;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .contact-grid .ghost:hover,

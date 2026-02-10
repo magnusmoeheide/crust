@@ -2,10 +2,12 @@ import { Route, Routes, Link } from "react-router-dom";
 import { useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faPizzaSlice,
   faUserGraduate,
   faHandshake,
   faTruckFast,
 } from "@fortawesome/free-solid-svg-icons";
+import { faCalendar as faCalendarRegular } from "@fortawesome/free-regular-svg-icons";
 import Layout from "./components/Layout";
 import Apply from "./pages/Apply";
 import Locations from "./pages/Locations";
@@ -38,48 +40,62 @@ function Home() {
   return (
     <>
       <section className="hero">
-        <div className="hero-copy">
+        <div className="hero-header">
           <p className="eyebrow">Kvalitet og mening i hver bit</p>
-          <h1>
-            Crust gir muligheter til ungdom - og den beste pizzaen i byen.
-          </h1>
-          <p className="lead">
-            Vi er pizzastedet der første jobber starter sterkt. I 2025 ga vi
-            under navnet Toastmasters 100 ungdom sin aller første jobb, og en
-            mulighet til å ta steget videre. Nå er vi Crust n' Trust, hvor vi
-            sikter på å gi nye 100 ungdom dobbelt så mye erfaring, mestring og
-            muligheter, samtidig som vi serverer nydelig pizza.
-          </p>
-          <div className="hero-actions">
-            <Link className="cta" to="/plasseringer">
-              Bestill for levering nå!
-            </Link>
-            <a className="ghost" href="/event">
-              Bestill for et event
-            </a>
+          <h1>Crust gir muligheter til ungdom, og den beste pizzaen i byen.</h1>
+        </div>
+        <div className="hero-content">
+          <div className="hero-copy">
+            <p className="lead">
+              <strong>
+                Vi er pizzastedet der første jobber starter sterkt.{" "}
+              </strong>
+              <br /> I 2025 ga vi under navnet Toastmasters 100 ungdom sin aller
+              første jobb, og en mulighet til å ta steget videre. <br /> Nå er
+              vi Crust n' Trust, hvor vi sikter på å gi nye 100 ungdom dobbelt
+              så mye erfaring, mestring og muligheter, samtidig som vi serverer
+              nydelig pizza.
+            </p>
+            <div className="hero-actions">
+              <Link className="cta" to="/plasseringer">
+                Hent pizza nå! <FontAwesomeIcon icon={faPizzaSlice} />
+              </Link>
+              <a className="ghost" href="/event">
+                Bestill for et event{" "}
+                <FontAwesomeIcon icon={faCalendarRegular} />
+              </a>
+            </div>
+          </div>
+          <div className="hero-media">
+            <img
+              className="hero-main"
+              src={pizza2_960}
+              srcSet={`${pizza2_480} 480w, ${pizza2_960} 960w, ${pizza2_1600} 1600w`}
+              sizes="(max-width: 700px) 92vw, (max-width: 1200px) 50vw, 700px"
+              alt="Fersk pizza på en treplate"
+              decoding="async"
+              fetchPriority="high"
+            />
           </div>
           <div className="hero-notes">
-            <span>Tidligere Toastmasters</span>
-            <span>Ansetter 15-19 år</span>
-            <span>Jobb både i skoletid og utenfor skoletid</span>
+            <span>
+              <i class="fa-solid fa-angles-right"></i> Tidligere Toastmasters
+            </span>
+            <span>
+              <i class="fa-solid fa-child-reaching"></i> Ansetter 15-19 år
+            </span>
+            <span>
+              <i class="fa-solid fa-school"></i> Jobb både i og utenfor skoletid
+            </span>
           </div>
-        </div>
-        <div className="hero-media">
-          <img
-            className="hero-main"
-            src={pizza2_960}
-            srcSet={`${pizza2_480} 480w, ${pizza2_960} 960w, ${pizza2_1600} 1600w`}
-            sizes="(max-width: 700px) 92vw, (max-width: 1200px) 50vw, 700px"
-            alt="Fersk pizza på en treplate"
-            decoding="async"
-            fetchPriority="high"
-          />
         </div>
       </section>
 
       <section id="resultater" className="impact">
-        <div className="section-header">
-          <h2>Resultater du kan smake!</h2>
+        <div className="section-header impact-header-box">
+          <h2>
+            Resultater du kan smake! <i class="fa-regular fa-circle-check"></i>
+          </h2>
           <p>
             Crust kombinerer mentorordninger, tarifflønn og fleksible vakter,
             slik at ungdom kan bygge selvtillit og arbeidsferdigheter.
@@ -109,7 +125,7 @@ function Home() {
               <FontAwesomeIcon icon={faTruckFast} /> Selvstendighet
             </h3>
             <p>
-              Hver ungdom får ansvar for egen vogn – fra åpning til stenging –
+              Hver ungdom får ansvar for egen vogn, fra åpning til stenging,
               fordi tillit bygger mestring.
             </p>
           </article>
@@ -118,7 +134,10 @@ function Home() {
 
       <section id="program" className="program">
         <div className="program-copy">
-          <h2>Ditt steg inn i arbeidslivet</h2>
+          <h2>
+            Ditt steg inn i arbeidslivet{" "}
+            <i class="fa-solid fa-building-circle-check"></i>
+          </h2>
           <p>
             Hver vakt er strukturert for å lære profesjonelle vaner, fra
             punktlighet til kundeservice. Ungdommene roterer mellom roller for å
@@ -179,7 +198,7 @@ function Home() {
           <div>
             <span>Nå - 2026</span>
             <p>
-              Dobler sesongvarigheten og antallet arbeidstimer for ungdommen.
+              Vi dobler sesongvarigheten og antallet arbeidstimer for ungdommen.
               <br />
               Bytter fra Toast til Pizza for å styrke bunnlinje og en mer
               bærekraftig bedrift.
@@ -187,12 +206,16 @@ function Home() {
           </div>
         </div>
         <div className="story-card">
+          <h2 className="story-heading">
+            Fra Toastmasters til{" "}
+            <span className="no-break">Crust n' Trust</span>
+          </h2>
           <div className="story-text">
-            <h2>Fra Toastmasters til Crust n' Trust</h2>
             <p>
               Vi startet som Toastmasters, en lokalt forankret toastvogn med
-              store ambisjoner. Da ungdomsprogrammet vårt vokste, rebrandet vi
-              til Crust med servering av pizza.
+              store ambisjoner. Så fikk vi Frende Forsikring med på laget, som
+              så verdien i å gi muligheter til ungdom. I år rebrander vi til
+              Crust, med servering av pizza, flere muligheter og arbeidstimer.
             </p>
           </div>
           <div className="story-image">
@@ -210,7 +233,9 @@ function Home() {
 
       <section id="visit" className="visit">
         <div className="visit-card">
-          <h2>Kom sulten, dra inspirert</h2>
+          <h2>
+            Kom sulten, dra inspirert <i class="fa-regular fa-star"></i>
+          </h2>
           <p>
             Kom innom for den beste pizzaen, eller book Crust for et
             arrangement. <br />
@@ -218,11 +243,11 @@ function Home() {
           </p>
           <div className="visit-actions">
             <a className="cta" href="/event">
-              Bestill servering
+              Bestill servering <i class="fa-solid fa-pizza-slice"></i>
             </a>
 
             <a className="ghost" href="/plasseringer">
-              Hvor finner du oss
+              Hvor finner du oss <i class="fa-solid fa-map-pin"></i>
             </a>
           </div>
         </div>

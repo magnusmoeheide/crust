@@ -58,15 +58,17 @@ function About() {
       <header className="about-hero">
         <div>
           <p className="eyebrow">Om oss</p>
-          <h1>Crust bygger selvtillit gjennom første jobb</h1>
+          <h1>Vi gir muligheter</h1>
           <p className="lead">
-            Vi er en pizzarestaurant og et ungdomsprogram i ett. Målet vårt er å
-            gi unge arbeidserfaring, mestring og en trygg vei inn i
-            arbeidslivet.
+            Vi er en pizzarestaurant og et ungdomsprogram i ett. <br />
+            Målet vårt er å gi unge arbeidserfaring, mestring og en trygg vei
+            inn i arbeidslivet.
           </p>
         </div>
         <div className="about-card">
-          <h2>Crust n' Trust</h2>
+          <h2>
+            <i class="fa-solid fa-trophy"></i> Crust n' Trust
+          </h2>
           <p>
             Vi gir ungdom ansvar for egen butikk, samtidig som vi tilbyr tett
             oppfølging og opplæring. Resultatet er bedre ferdigheter, sterkere

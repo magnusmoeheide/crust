@@ -1,17 +1,78 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faAddressBook,
+  faCalendarCheck,
+  faCircleInfo,
+  faHandshake,
+  faHouse,
+  faLocationDot,
+  faUserPlus,
+} from "@fortawesome/free-solid-svg-icons";
 import crustLogo from "../assets/crust-logo-transparent.png";
 import "../App.css";
+
+const LOGO_CACHE_KEY = "crust-brand-logo-v1";
 
 function Layout() {
   const location = useLocation();
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const [logoSrc, setLogoSrc] = useState(() => {
+    if (typeof window === "undefined") {
+      return crustLogo;
+    }
+    try {
+      return localStorage.getItem(LOGO_CACHE_KEY) || crustLogo;
+    } catch {
+      return crustLogo;
+    }
+  });
 
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
   }, []);
+
+  useEffect(() => {
+    if (logoSrc !== crustLogo) {
+      return;
+    }
+
+    let cancelled = false;
+    const reader = new FileReader();
+
+    fetch(crustLogo)
+      .then((response) => response.blob())
+      .then(
+        (blob) =>
+          new Promise((resolve, reject) => {
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          }),
+      )
+      .then((result) => {
+        if (cancelled || typeof result !== "string") {
+          return;
+        }
+        setLogoSrc(result);
+        try {
+          localStorage.setItem(LOGO_CACHE_KEY, result);
+        } catch {
+          // Ignore storage failures (private mode/quota).
+        }
+      })
+      .catch(() => {
+        // Fallback to static asset URL.
+      });
+
+    return () => {
+      cancelled = true;
+      reader.abort();
+    };
+  }, [logoSrc]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -46,11 +107,7 @@ function Layout() {
       <header className="site-header">
         <div className="site-header-inner">
           <Link to="/" className="brand">
-            <img className="brand-logo" src={crustLogo} alt="Crust logo" />
-            <span className="brand-text">
-              <span className="brand-mark">Crust</span>
-              <span className="brand-tag">Crust n' Trust</span>
-            </span>
+            <img className="brand-logo" src={logoSrc} alt="Crust logo" />
           </Link>
           <button
             className="nav-toggle"
@@ -64,13 +121,34 @@ function Layout() {
             <span />
           </button>
           <nav className={`site-nav ${isNavOpen ? "is-open" : ""}`}>
-            <Link to="/">Hjem</Link>
-            <Link to="/om-oss">Om oss</Link>
-            <Link to="/plasseringer">Plasseringer</Link>
-            <Link to="/partnere">Partnere</Link>
-            <Link to="/event">Event</Link>
-            <Link to="/kontakt">Kontakt</Link>
-            <Link to="/jobb">Søk jobb</Link>
+            <Link to="/">
+              <FontAwesomeIcon className="nav-icon" icon={faHouse} />
+              <span className="nav-label">Hjem</span>
+            </Link>
+            <Link to="/om-oss">
+              <FontAwesomeIcon className="nav-icon" icon={faCircleInfo} />
+              <span className="nav-label">Om oss</span>
+            </Link>
+            <Link to="/plasseringer">
+              <FontAwesomeIcon className="nav-icon" icon={faLocationDot} />
+              <span className="nav-label">Plasseringer</span>
+            </Link>
+            <Link to="/partnere">
+              <FontAwesomeIcon className="nav-icon" icon={faHandshake} />
+              <span className="nav-label">Partnere</span>
+            </Link>
+            <Link to="/event">
+              <FontAwesomeIcon className="nav-icon" icon={faCalendarCheck} />
+              <span className="nav-label">Event</span>
+            </Link>
+            <Link to="/kontakt">
+              <FontAwesomeIcon className="nav-icon" icon={faAddressBook} />
+              <span className="nav-label">Kontakt</span>
+            </Link>
+            <Link to="/jobb">
+              <FontAwesomeIcon className="nav-icon" icon={faUserPlus} />
+              <span className="nav-label">Søk jobb</span>
+            </Link>
           </nav>
         </div>
       </header>
