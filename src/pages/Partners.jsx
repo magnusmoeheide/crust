@@ -14,7 +14,7 @@ function Partners() {
     {
       name: "Frende Forsikring",
       focus:
-        "Hovedpartner.\nFrende har gjort betydelige økonomiske bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom.",
+        "Hovedpartner.\nFrende har gjort betydelige bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom, samt lære opp ungdommen i Norges beste kundeservice.",
       logo: frendeLogo,
     },
     {

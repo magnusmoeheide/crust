@@ -37,8 +37,8 @@ function Locations() {
     <div className="locations-page">
       <header className="locations-hero">
         <div>
-          <p className="eyebrow">Ti foodtrucks, en mission!</p>
-          <h1>Finn en Crust Foodtruck</h1>
+          <p className="eyebrow">Ti vogner - ett mål!</p>
+          <h1>Finn en pizzavogn!</h1>
           <p className="lead">
             Våre 10 foodtrucks bringer Crust n' Trust til nabolag over hele Oslo
             - og litt utenfor! Ta turen innom for en smak av vår crusty pizza.

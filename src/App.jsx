@@ -1,4 +1,4 @@
-import { Route, Routes, Link } from "react-router-dom";
+import { Route, Routes, Link, Navigate } from "react-router-dom";
 import { useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -20,6 +20,7 @@ import Forms from "./pages/Forms";
 import FormPage from "./pages/FormPage";
 import VarigHadeland from "./pages/VarigHadeland";
 import Obos from "./pages/Obos";
+import Admin from "./pages/Admin";
 import alesund600 from "./assets/optimized/alesund-600.jpg";
 import alesund1200 from "./assets/optimized/alesund-1200.jpg";
 import pizza2_480 from "./assets/optimized/pizza2-480.jpeg";
@@ -47,16 +48,14 @@ function Home() {
         <div className="hero-header">
           <p className="eyebrow">Kvalitet og mening i hver bit</p>
           <h1>
-            Crust gir ungdom muligheter, <br />
-            og byen den beste pizzaen.
+            Ungdom på jobb <br />
+            med byens beste Pizza!
           </h1>
         </div>
         <div className="hero-content">
           <div className="hero-copy">
             <p className="lead">
-              <strong>
-                Vi er stedet der ungdom får en inngang til arbeidslivet.{" "}
-              </strong>
+              <strong>Vogna som gir jobb til ungdom som står utenfor.</strong>
               <br /> I 2025 ga vi, under navnet Toastmasters, 100 ungdommer sin
               aller første jobb og en fot innenfor arbeidslivet. <br />
             </p>
@@ -149,9 +148,9 @@ function Home() {
             <i class="fa-solid fa-building-circle-check"></i>
           </h2>
           <p>
-            Hver vakt er lagt opp for å lære gode arbeidsvaner, fra punktlighet
-            til kundeservice. Ungdommen har alle ansvar for alle roller i
-            foodtrucken, og får fullt ansvar etter kort tid.
+            Hos oss utvikler ungdom sterke arbeidsvaner, fra punktlighet til god
+            kundeservice. De får tillit og ansvar i praksis. <br />
+            Her er det ungdommen som styrer vogna!
           </p>
           <img
             className="program-image"
@@ -246,9 +245,7 @@ function Home() {
 
       <section id="visit" className="visit">
         <div className="visit-card">
-          <h2>
-            Kom sulten, dra inspirert <i class="fa-regular fa-star"></i>
-          </h2>
+          <h2>Sulten, nysgjerrig, eller kanskje begge?</h2>
           <p>
             Kom innom for den beste pizzaen, eller book oss for et arrangement.{" "}
             <br />
@@ -283,10 +280,12 @@ function App() {
         <Route path="/om-oss" element={<About />} />
         <Route path="/varig-hadeland" element={<VarigHadeland />} />
         <Route path="/obos" element={<Obos />} />
+        <Route path="/admin" element={<Admin />} />
         <Route path="/skjema" element={<Forms />} />
         <Route path="/skjema/:formSlug" element={<FormPage />} />
         <Route path="/skjema/:formSlug/submissions" element={<FormPage />} />
         <Route path="/skjema/:formSlug/edit" element={<FormPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );

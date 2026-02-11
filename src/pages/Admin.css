@@ -1,0 +1,58 @@
+.admin-page {
+  padding: 48px 6vw 80px;
+  display: grid;
+  gap: 20px;
+}
+
+.admin-hero {
+  max-width: 720px;
+}
+
+.admin-panel {
+  background: #fff1e2;
+  border: 1px solid rgba(24, 44, 60, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.admin-login-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #5f4c3f;
+  text-decoration: underline;
+  font: inherit;
+  text-align: left;
+}
+
+.admin-login-link:hover {
+  color: #1c140f;
+}
+
+.forms-error {
+  color: #8d1f08;
+  font-weight: 600;
+}
+
+.forms-success {
+  color: #0b6d3f;
+  font-weight: 600;
+}
+
+.danger-button {
+  border-color: #8d1f08;
+  color: #8d1f08;
+}
+
+.danger-button:hover {
+  background: rgba(141, 31, 8, 0.08);
+}

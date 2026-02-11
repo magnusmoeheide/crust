@@ -114,6 +114,11 @@
   color: var(--muted);
 }
 
+.apply-closed-message {
+  color: #8d1f08;
+  font-weight: 600;
+}
+
 .apply-form .apply-link .cta {
   width: fit-content;
 }

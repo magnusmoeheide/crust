@@ -35,8 +35,7 @@ function Forms() {
     error: "",
     message: "",
   });
-  const { user, isAdmin, loading, error, signIn, signOutAdmin } =
-    useAdminSession();
+  const { user, isAdmin, loading, error, signOutAdmin } = useAdminSession();
 
   useEffect(() => {
     let cancelled = false;
@@ -377,9 +376,9 @@ function Forms() {
             </form>
           </>
         ) : (
-          <button type="button" className="admin-login-link" onClick={signIn}>
-            Admin login
-          </button>
+          <p>
+            Admin-innlogging er flyttet til <Link to="/admin">/admin</Link>.
+          </p>
         )}
       </section>
     </div>

@@ -81,7 +81,7 @@ function Contact() {
         </article>
         <article className="contact-feedback">
           <h3>
-            <FontAwesomeIcon icon={faCommentDots} /> Tilbakemelding
+            <FontAwesomeIcon icon={faCommentDots} /> Ris og ros
           </h3>
           <p>Hjelp oss å bli bedre. Send en tilbakemelding.</p>
           <button

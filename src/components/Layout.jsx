@@ -91,6 +91,7 @@ function Layout() {
       "/jobb": "Søk jobb",
       "/frende": "Frende",
       "/kontakt": "Kontakt",
+      "/admin": "Admin",
       "/skjema": "Skjemaer",
     };
     if (location.pathname === "/") {
@@ -137,7 +138,7 @@ function Layout() {
             </Link>
             <Link to="/plasseringer">
               <FontAwesomeIcon className="nav-icon" icon={faLocationDot} />
-              <span className="nav-label">Plasseringer</span>
+              <span className="nav-label">Finn en vogn</span>
             </Link>
             <Link to="/partnere">
               <FontAwesomeIcon className="nav-icon" icon={faHandshake} />

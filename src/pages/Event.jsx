@@ -56,8 +56,8 @@ function Event() {
           </h2>
           <ul>
             <li>Lunsj, firmafest eller arrangement for din bedrift</li>
+            <li>Bursdag eller andre sammenkomster</li>
             <li>Skoleklasser, lag og foreninger</li>
-            <li>Nabolag eller andre sammenkomster</li>
           </ul>
         </div>
       </header>

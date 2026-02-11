@@ -27,6 +27,11 @@ service cloud.firestore {
       allow create, update, delete: if isCrustUser();
     }
 
+    match /siteSettings/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isCrustUser();
+    }
+
     match /formSubmissions/{docId} {
       allow create: if true;
       allow read, delete: if isCrustUser();

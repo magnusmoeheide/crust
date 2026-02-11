@@ -10,6 +10,7 @@ import jostein600 from "../assets/optimized/jostein-600.jpeg";
 import historie600 from "../assets/optimized/historie-600.jpeg";
 import historie1200 from "../assets/optimized/historie-1200.jpeg";
 import iVogna from "../assets/i-vogna.jpeg";
+import werner from "../assets/werner.jpeg";
 
 function About() {
   const placeholder =
@@ -39,7 +40,7 @@ function About() {
     {
       name: "Christian Træland",
       role: "Gründer og Styremedlem",
-      email: "christian@licc.no",
+      email: "",
       phone: "",
       image: {
         src: christian600,
@@ -47,9 +48,19 @@ function About() {
       },
     },
     {
+      name: "Christian W. Hansen",
+      role: "Styremedlem",
+      email: "",
+      phone: "",
+      image: {
+        src: werner,
+        srcSet: `${werner} 600w`,
+      },
+    },
+    {
       name: "Jostein Hellgjerde",
       role: "Styreleder",
-      email: "jostein@licc.no",
+      email: "",
       phone: "",
       image: {
         src: jostein600,
@@ -65,9 +76,9 @@ function About() {
           <p className="eyebrow">Om oss</p>
           <h1>Vi gir muligheter</h1>
           <p className="lead">
-            Vi er en pizzarestaurant og et ungdomsprogram i ett. <br />
-            Målet vårt er å gi unge arbeidserfaring, mestring og en trygg vei
-            inn i arbeidslivet.
+            Crust er pizza-vogner som gir muligheter til ungdom som står
+            utenfor. Målet vårt er å gi unge arbeidserfaring, mestring og en
+            trygg vei inn i arbeidslivet.
           </p>
         </div>
         <div className="about-card">
@@ -147,13 +158,14 @@ function About() {
 
       <section className="about-team">
         <div className="section-header">
-          <h2>Crust-teamet</h2>
+          <h2>Teamet</h2>
           <p className="history-body">
-            Vi har et team og styre med bred erfaring og god kompetanse innenfor
-            viktige økonomiske og administrative områder. Samtlige har lang
-            erfaring som daglig ledere, strategi og konsulentvirksomhet,
-            entreprenørskap – både kommersielt og sosialt, samt bred kompetanse
-            på regnskap, revisjon og finans.
+            Vi er et sammensveiset team og styre med erfaring fra både drift,
+            strategi og entreprenørskap. Daglig leder er tidligere lærer og har
+            et sterkt engasjement for å gi ungdom en god start i arbeidslivet.
+            Vi vet hva som skal til for å bygge trygge rammer, gi ansvar og
+            skape mestring. Samtidig har vi solid kompetanse innen økonomi,
+            regnskap, revisjon og finans.
           </p>
         </div>
         <div className="team-grid">
@@ -170,10 +182,8 @@ function About() {
               <div className="team-card">
                 <h3>{member.name}</h3>
                 <span>{member.role}</span>
-                <p className="team-contact-line">{member.email}</p>
-                <p className="team-contact-line">
-                  {member.phone || "Telefon ikke oppgitt"}
-                </p>
+                <p className="team-contact-line">{member.email || ""}</p>
+                <p className="team-contact-line">{member.phone || ""}</p>
               </div>
             </article>
           ))}
