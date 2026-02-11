@@ -9,6 +9,7 @@ import jostein300 from "../assets/optimized/jostein-300.jpeg";
 import jostein600 from "../assets/optimized/jostein-600.jpeg";
 import historie600 from "../assets/optimized/historie-600.jpeg";
 import historie1200 from "../assets/optimized/historie-1200.jpeg";
+import iVogna from "../assets/i-vogna.jpeg";
 
 function About() {
   const placeholder =
@@ -18,7 +19,8 @@ function About() {
     {
       name: "Magnus Heide",
       role: "Gründer og Daglig leder",
-      focus: "magnus@crust.no | +47 958 85 852",
+      email: "magnus@crust.no",
+      phone: "+47 958 85 852",
       image: {
         src: magnus600,
         srcSet: `${magnus300} 300w, ${magnus600} 600w`,
@@ -27,7 +29,8 @@ function About() {
     {
       name: "Haakon Aarseth",
       role: "Partneransvarlig",
-      focus: "haakon@crust.no | +47 473 88 646",
+      email: "haakon@crust.no",
+      phone: "+47 473 88 646",
       image: {
         src: haakon600,
         srcSet: `${haakon300} 300w, ${haakon600} 600w`,
@@ -36,16 +39,18 @@ function About() {
     {
       name: "Christian Træland",
       role: "Gründer og Styremedlem",
-      focus: "christian@licc.no",
+      email: "christian@licc.no",
+      phone: "",
       image: {
         src: christian600,
         srcSet: `${christian300} 300w, ${christian600} 600w`,
       },
     },
     {
-      name: "Jostein",
+      name: "Jostein Hellgjerde",
       role: "Styreleder",
-      focus: "jostein@licc.no",
+      email: "jostein@licc.no",
+      phone: "",
       image: {
         src: jostein600,
         srcSet: `${jostein300} 300w, ${jostein600} 600w`,
@@ -71,8 +76,8 @@ function About() {
           </h2>
           <p>
             Vi gir ungdom ansvar for egen butikk, samtidig som vi tilbyr tett
-            oppfølging og opplæring. Resultatet er bedre ferdigheter, sterkere
-            fellesskap og tryggere fremtidsvalg.
+            oppfølging og opplæring. Resultatet er nye ferdigheter, selvtillit,
+            og muligheter for framtiden.
           </p>
         </div>
       </header>
@@ -82,23 +87,37 @@ function About() {
           <div>
             <div className="section-header">
               <h2>Vår historie</h2>
-              <p>
-                Flere og flere ungdom i Norge faller fra et tradisjonelt
-                utdanningsløp. Crust er et nytt konsept som satser på ungdom og
-                gir dem en vei inn i arbeidslivet - en mulighet til å utvikle
-                seg, få arbeidserfaring og åpne dører til nye muligheter.
-              </p>
             </div>
             <div className="history-body">
               <p>
-                For å møte dette behovet og bidra til å forhindre utenforskap,
-                startet vi Crust, tidligere Toastmasters.
+                Flere og flere ungdom i Norge faller fra et tradisjonelt
+                utdanningsløp. Crust (tidligere Toastmasters) er et nytt konsept
+                som satser på ungdom og gir dem en vei inn i arbeidslivet - en
+                mulighet til å utvikle seg, få arbeidserfaring og åpne dører til
+                nye muligheter.
               </p>
               <p>
-                Vårt mål er å gi ungdommer en plattform hvor de kan oppleve
-                mestring, tilegne seg arbeidslivsferdigheter og bygge
-                selvtillit.
+                For å møte dette behovet og bidra til å forhindre utenforskap,
+                startet vi Crust. Vårt mål er å gi ungdommer en plattform hvor
+                de kan oppleve mestring, tilegne seg arbeidslivsferdigheter og
+                bygge selvtillit.
               </p>
+            </div>
+          </div>
+          <div className="history-media">
+            <img
+              src={historie600}
+              srcSet={`${historie600} 600w, ${historie1200} 1200w`}
+              sizes="(max-width: 900px) 90vw, 520px"
+              alt="Crust sin historie i bilder"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        </div>
+        <div className="history-layout history-layout-reverse">
+          <div>
+            <div className="history-body">
               <p>
                 Gjennom praktisk arbeid og ansvar i en trygg og støttende
                 arbeidskultur, hjelper vi dem med å bygge en sterkere fremtid og
@@ -116,8 +135,7 @@ function About() {
           </div>
           <div className="history-media">
             <img
-              src={historie600}
-              srcSet={`${historie600} 600w, ${historie1200} 1200w`}
+              src={iVogna}
               sizes="(max-width: 900px) 90vw, 520px"
               alt="Crust sin historie i bilder"
               loading="lazy"
@@ -130,8 +148,12 @@ function About() {
       <section className="about-team">
         <div className="section-header">
           <h2>Crust-teamet</h2>
-          <p>
-            Et lite team med stort ansvar for trygghet, læring og fellesskap.
+          <p className="history-body">
+            Vi har et team og styre med bred erfaring og god kompetanse innenfor
+            viktige økonomiske og administrative områder. Samtlige har lang
+            erfaring som daglig ledere, strategi og konsulentvirksomhet,
+            entreprenørskap – både kommersielt og sosialt, samt bred kompetanse
+            på regnskap, revisjon og finans.
           </p>
         </div>
         <div className="team-grid">
@@ -148,7 +170,10 @@ function About() {
               <div className="team-card">
                 <h3>{member.name}</h3>
                 <span>{member.role}</span>
-                <p>{member.focus}</p>
+                <p className="team-contact-line">{member.email}</p>
+                <p className="team-contact-line">
+                  {member.phone || "Telefon ikke oppgitt"}
+                </p>
               </div>
             </article>
           ))}

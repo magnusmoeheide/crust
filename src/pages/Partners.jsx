@@ -14,7 +14,7 @@ function Partners() {
     {
       name: "Frende Forsikring",
       focus:
-        "Vår hovedpartner.\nFrende har gjort betydelige økonomiske bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom.",
+        "Hovedpartner.\nFrende har gjort betydelige økonomiske bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom.",
       logo: frendeLogo,
     },
     {
@@ -67,9 +67,9 @@ function Partners() {
             <i class="fa-solid fa-handshake"></i> Sammen gir vi:
           </h2>
           <ul>
-            <li>Arbeidslivstrening og mentoring</li>
+            <li>En inngang til arbeidslivet og oppfølging</li>
+            <li>En jobb med mestring og erfaring</li>
             <li>Videre utdanning og muligheter</li>
-            <li>Nabolagseventer og catering</li>
           </ul>
         </div>
       </header>

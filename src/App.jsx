@@ -18,6 +18,8 @@ import Frende from "./pages/Frende";
 import Contact from "./pages/Contact";
 import Forms from "./pages/Forms";
 import FormPage from "./pages/FormPage";
+import VarigHadeland from "./pages/VarigHadeland";
+import Obos from "./pages/Obos";
 import alesund600 from "./assets/optimized/alesund-600.jpg";
 import alesund1200 from "./assets/optimized/alesund-1200.jpg";
 import pizza2_480 from "./assets/optimized/pizza2-480.jpeg";
@@ -44,26 +46,31 @@ function Home() {
       <section className="hero">
         <div className="hero-header">
           <p className="eyebrow">Kvalitet og mening i hver bit</p>
-          <h1>Crust gir muligheter til ungdom, og den beste pizzaen i byen.</h1>
+          <h1>
+            Crust gir ungdom muligheter, <br />
+            og byen den beste pizzaen.
+          </h1>
         </div>
         <div className="hero-content">
           <div className="hero-copy">
             <p className="lead">
               <strong>
-                Vi er pizzastedet der første jobber starter sterkt.{" "}
+                Vi er stedet der ungdom får en inngang til arbeidslivet.{" "}
               </strong>
-              <br /> I 2025 ga vi under navnet Toastmasters 100 ungdom sin aller
-              første jobb, og en mulighet til å ta steget videre. <br /> Nå er
-              vi Crust n' Trust, hvor vi sikter på å gi nye 100 ungdom dobbelt
+              <br /> I 2025 ga vi, under navnet Toastmasters, 100 ungdommer sin
+              aller første jobb og en fot innenfor arbeidslivet. <br />
+            </p>
+            <p className="lead">
+              Nå er vi Crust n' Trust, hvor vi skal gi 100 nye ungdommer dobbelt
               så mye erfaring, mestring og muligheter, samtidig som vi serverer
-              nydelig pizza.
+              skikkelig god pizza.
             </p>
             <div className="hero-actions">
               <Link className="cta" to="/plasseringer">
                 Hent pizza nå! <FontAwesomeIcon icon={faPizzaSlice} />
               </Link>
               <a className="ghost" href="/event">
-                Bestill for et event{" "}
+                Bestill til et arrangement{" "}
                 <FontAwesomeIcon icon={faCalendarRegular} />
               </a>
             </div>
@@ -84,7 +91,7 @@ function Home() {
               <i class="fa-solid fa-angles-right"></i> Tidligere Toastmasters
             </span>
             <span>
-              <i class="fa-solid fa-child-reaching"></i> Ansetter 15-19 år
+              <i class="fa-solid fa-child-reaching"></i> Ansetter 15 til 19 år
             </span>
             <span>
               <i class="fa-solid fa-school"></i> Jobb både i og utenfor skoletid
@@ -96,11 +103,12 @@ function Home() {
       <section id="resultater" className="impact">
         <div className="section-header impact-header-box">
           <h2>
-            Resultater du kan smake! <i class="fa-regular fa-circle-check"></i>
+            Resultater du kan smake <i class="fa-regular fa-circle-check"></i>
           </h2>
           <p>
-            Crust kombinerer mentorordninger, tarifflønn og fleksible vakter,
-            slik at ungdom kan bygge selvtillit og arbeidsferdigheter.
+            Crust kombinerer god opplæring, veiledning, tarifflønn og fleksible
+            vakter, slik at ungdom får en arena for mestring og erfaring, bygger
+            selvtillit, og får efaring som åpner dører videre i arbeidslivet.
           </p>
         </div>
         <div className="impact-grid">
@@ -109,7 +117,7 @@ function Home() {
               <FontAwesomeIcon icon={faUserGraduate} /> 100 første jobber
             </h3>
             <p>
-              Vi ansetter 100 nye ungdom i 2026 og gir dem sin aller første
+              Vi ansetter 100 nye ungdommer i 2026 og gir dem sin aller første
               lønn.
             </p>
           </article>
@@ -118,8 +126,8 @@ function Home() {
               <FontAwesomeIcon icon={faHandshake} /> Grundig opplæring
             </h3>
             <p>
-              Betalt opplæring i kundeservice, matsikkerhet og ledelse – rett ut
-              i praksis.
+              Opplæring og kurs i kundeservice, matsikkerhet, renhold og ledelse
+              – rett ut i praksis.
             </p>
           </article>
           <article>
@@ -128,7 +136,7 @@ function Home() {
             </h3>
             <p>
               Hver ungdom får ansvar for egen vogn, fra åpning til stenging,
-              fordi tillit bygger mestring.
+              fordi vi vet at tillit bygger mestring.
             </p>
           </article>
         </div>
@@ -141,9 +149,9 @@ function Home() {
             <i class="fa-solid fa-building-circle-check"></i>
           </h2>
           <p>
-            Hver vakt er strukturert for å lære profesjonelle vaner, fra
-            punktlighet til kundeservice. Ungdommene roterer mellom roller for å
-            lære hele rytmen i en restaurant.
+            Hver vakt er lagt opp for å lære gode arbeidsvaner, fra punktlighet
+            til kundeservice. Ungdommen har alle ansvar for alle roller i
+            foodtrucken, og får fullt ansvar etter kort tid.
           </p>
           <img
             className="program-image"
@@ -161,7 +169,7 @@ function Home() {
               <span className="step-number">1</span> Intervju
             </h3>
             <p>
-              Vi ser deg for den du er - ikke hva du har eller ikke har på CVen.
+              Vi ser deg for den du er, ikke hva du har eller ikke har på CV-en.
             </p>
           </div>
           <div>
@@ -169,7 +177,7 @@ function Home() {
               <span className="step-number">2</span> Tjen og lær
             </h3>
             <p>
-              Jobb med tariff-lønn, veiledning, og en fantastisk mulighet for
+              Jobb med tarifflønn, veiledning og en fantastisk mulighet til å få
               erfaring.
             </p>
           </div>
@@ -177,7 +185,9 @@ function Home() {
             <h3>
               <span className="step-number">3</span> Steget videre
             </h3>
-            <p>Få hjelp til CV-støtte, anbefalingsbrev og alumni-oppfølging.</p>
+            <p>
+              Få hjelp med CV, anbefalingsbrev og oppfølging videre etterpå.
+            </p>
           </div>
         </div>
       </section>
@@ -187,22 +197,22 @@ function Home() {
           <div>
             <span>2024</span>
             <p>
-              Åpnet vår første vogn på Sognsvann, med opplæring først i fokus.
+              Åpnet vår første vogn på Sognsvann i Oslo, hvor vi fikk testet ut
+              konseptet.
             </p>
           </div>
           <div>
             <span>2025</span>
             <p>
-              Åpnet ytterligere 9 vogner. Nådde 100 jobber for tenåringer på ett
-              år.
+              Åpnet ytterligere 9 vogner. Nådde målet om 100 ungdommer i jobb på
+              ett år.
             </p>
           </div>
           <div>
             <span>Nå - 2026</span>
             <p>
               Vi dobler sesongvarigheten og antallet arbeidstimer for ungdommen.
-              <br />
-              Bytter fra Toast til Pizza for å styrke bunnlinje og en mer
+              Vi går fra toast til pizza for å styrke bunnlinjen og bygge en mer
               bærekraftig bedrift.
             </p>
           </div>
@@ -216,8 +226,9 @@ function Home() {
             <p>
               Vi startet som Toastmasters, en lokalt forankret toastvogn med
               store ambisjoner. Så fikk vi Frende Forsikring med på laget, som
-              så verdien i å gi muligheter til ungdom. I år rebrander vi til
-              Crust, med servering av pizza, flere muligheter og arbeidstimer.
+              så verdien i å gi muligheter til ungdom. <br />
+              <br />I år bytter vi navn til Crust, med pizza på menyen og enda
+              flere muligheter og arbeidstimer for ungdom.
             </p>
           </div>
           <div className="story-image">
@@ -239,8 +250,8 @@ function Home() {
             Kom sulten, dra inspirert <i class="fa-regular fa-star"></i>
           </h2>
           <p>
-            Kom innom for den beste pizzaen, eller book Crust for et
-            arrangement. <br />
+            Kom innom for den beste pizzaen, eller book oss for et arrangement.{" "}
+            <br />
             Hver slice støtter en ungdom i sin aller første jobb!
           </p>
           <div className="visit-actions">
@@ -270,6 +281,8 @@ function App() {
         <Route path="/frende" element={<Frende />} />
         <Route path="/kontakt" element={<Contact />} />
         <Route path="/om-oss" element={<About />} />
+        <Route path="/varig-hadeland" element={<VarigHadeland />} />
+        <Route path="/obos" element={<Obos />} />
         <Route path="/skjema" element={<Forms />} />
         <Route path="/skjema/:formSlug" element={<FormPage />} />
         <Route path="/skjema/:formSlug/submissions" element={<FormPage />} />

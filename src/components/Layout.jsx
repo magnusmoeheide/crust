@@ -84,7 +84,6 @@ function Layout() {
 
   useEffect(() => {
     const titleMap = {
-      "/": "Hjem",
       "/om-oss": "Om oss",
       "/plasseringer": "Plasseringer",
       "/partnere": "Partnere",
@@ -94,6 +93,10 @@ function Layout() {
       "/kontakt": "Kontakt",
       "/skjema": "Skjemaer",
     };
+    if (location.pathname === "/") {
+      document.title = "Crust n' Trust";
+      return;
+    }
     const pageTitle = location.pathname.startsWith("/skjema/")
       ? "Skjema"
       : titleMap[location.pathname];
