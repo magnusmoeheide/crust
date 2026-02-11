@@ -10,7 +10,7 @@ import {
   faLocationDot,
   faUserPlus,
 } from "@fortawesome/free-solid-svg-icons";
-import crustLogo from "../assets/crust-logo-transparent.png";
+import crustLogo from "../assets/optimized/crust-logo-1024.png";
 import "../App.css";
 
 const LOGO_CACHE_KEY = "crust-brand-logo-v1";

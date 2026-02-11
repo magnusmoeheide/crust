@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPizzaSlice } from "@fortawesome/free-solid-svg-icons";
 import "./Event.css";
 
 function Event() {
@@ -52,7 +54,7 @@ function Event() {
         </div>
         <div className="event-card">
           <h2>
-            <i class="fa-solid fa-pizza-slice"></i> Passer for ...
+            <FontAwesomeIcon icon={faPizzaSlice} /> Passer for ...
           </h2>
           <ul>
             <li>Lunsj, firmafest eller arrangement for din bedrift</li>

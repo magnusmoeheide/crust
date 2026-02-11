@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faHandshake } from "@fortawesome/free-solid-svg-icons";
 import frendeLogo from "../assets/Frende-logo.png";
-import navLogo from "../assets/nav-logo.png";
+import navLogo from "../assets/optimized/nav-logo-1200.png";
 import varigLogo from "../assets/varig-hadeland.webp";
 import obosLogo from "../assets/obos-logo.png";
 import osloKommuneLogo from "../assets/oslo-kommune.png";
@@ -64,7 +66,7 @@ function Partners() {
         </div>
         <div className="partners-card">
           <h2>
-            <i class="fa-solid fa-handshake"></i> Sammen gir vi:
+            <FontAwesomeIcon icon={faHandshake} /> Sammen gir vi:
           </h2>
           <ul>
             <li>En inngang til arbeidslivet og oppfølging</li>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faAddressBook } from "@fortawesome/free-regular-svg-icons";
 import {
   faBriefcase,
   faCalendarCheck,
@@ -32,7 +33,7 @@ function Contact() {
         </div>
         <div className="contact-card">
           <h2>
-            <i class="fa-regular fa-address-book"></i> Kontaktinfo
+            <FontAwesomeIcon icon={faAddressBook} /> Kontaktinfo
           </h2>
           <p>
             <strong>E-post:</strong>{" "}

@@ -102,11 +102,11 @@ function Admin() {
           Admin login
         </button>
       ) : null}
+      {!loading && !isAdmin && error ? <p className="forms-error">{error}</p> : null}
 
       {isAdmin && (
         <section className="admin-panel">
           {loading ? <p>Kontrollerer innlogging...</p> : null}
-          {error ? <p className="forms-error">{error}</p> : null}
 
           {isAdmin ? (
             <>

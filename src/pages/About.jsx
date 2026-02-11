@@ -1,4 +1,6 @@
 import "./About.css";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTrophy } from "@fortawesome/free-solid-svg-icons";
 import christian300 from "../assets/optimized/christian-300.png";
 import christian600 from "../assets/optimized/christian-600.png";
 import haakon300 from "../assets/optimized/haakon-300.jpeg";
@@ -83,7 +85,7 @@ function About() {
         </div>
         <div className="about-card">
           <h2>
-            <i class="fa-solid fa-trophy"></i> Crust n' Trust
+            <FontAwesomeIcon icon={faTrophy} /> Crust n' Trust
           </h2>
           <p>
             Vi gir ungdom ansvar for egen butikk, samtidig som vi tilbyr tett

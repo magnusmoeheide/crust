@@ -11,6 +11,9 @@ function isCrustEmail(email) {
   return typeof email === 'string' && /@crust\.no$/i.test(email)
 }
 
+const INVALID_EMAIL_ERROR =
+  'Ugyldig e-post for admin. Bruk en @crust.no-konto.'
+
 export function useAdminSession() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -28,7 +31,7 @@ export function useAdminSession() {
       if (!isCrustEmail(nextEmail)) {
         await signOut(auth)
         setUser(null)
-        setError('Kun @crust.no-kontoer har admin-tilgang.')
+        setError(INVALID_EMAIL_ERROR)
         setLoading(false)
         return
       }
@@ -49,7 +52,7 @@ export function useAdminSession() {
       const credential = await signInWithPopup(auth, provider)
       if (!isCrustEmail(credential.user?.email || '')) {
         await signOut(auth)
-        setError('Kun @crust.no-kontoer har admin-tilgang.')
+        setError(INVALID_EMAIL_ERROR)
       }
     } catch (err) {
       if (err?.code === 'auth/popup-closed-by-user') {

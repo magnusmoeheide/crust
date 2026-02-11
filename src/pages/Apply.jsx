@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowUpRightFromSquare } from "@fortawesome/free-solid-svg-icons";
+import {
+  faArrowUpRightFromSquare,
+  faPersonWalking,
+} from "@fortawesome/free-solid-svg-icons";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -11,6 +14,7 @@ import "./Apply.css";
 
 function Apply() {
   const [acceptingApplications, setAcceptingApplications] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -20,9 +24,11 @@ function Apply() {
         setAcceptingApplications(
           typeof nextValue === "boolean" ? nextValue : true,
         );
+        setSettingsLoading(false);
       },
       () => {
         setAcceptingApplications(true);
+        setSettingsLoading(false);
       },
     );
 
@@ -39,7 +45,7 @@ function Apply() {
         </div>
         <div className="apply-card">
           <h2>
-            <i class="fa-solid fa-person-walking"></i> Er dette deg?
+            <FontAwesomeIcon icon={faPersonWalking} /> Er dette deg?
           </h2>
 
           <span>Du er mellom 15 og 19 år</span>
@@ -57,7 +63,9 @@ function Apply() {
       <section className="apply-form">
         <h2>Søknad</h2>
         <div className="apply-link">
-          {acceptingApplications ? (
+          {settingsLoading ? (
+            <p>Laster...</p>
+          ) : acceptingApplications ? (
             <>
               <p>Søknadsskjemaet åpnes i ny fane.</p>
               <a
@@ -72,7 +80,7 @@ function Apply() {
             </>
           ) : (
             <p className="apply-closed-message">
-              Vi tar dessverre ikke imot søknader nå. Kom tilbake senere.
+              Søknadsportalen vår er ikke åpen nå. Kom tilbake senere.
             </p>
           )}
         </div>

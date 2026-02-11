@@ -1,13 +1,10 @@
 import "./Locations.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faLocationDot } from "@fortawesome/free-solid-svg-icons";
+import { faLocationDot, faTruck } from "@fortawesome/free-solid-svg-icons";
 import foodtruck600 from "../assets/optimized/foodtruck-600.png";
 import foodtruck1200 from "../assets/optimized/foodtruck-1200.png";
 
 function Locations() {
-  const placeholder =
-    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600' viewBox='0 0 600 600'><rect width='600' height='600' fill='%23fff1e2'/><rect x='40' y='40' width='520' height='520' rx='28' fill='%23ffe1c8' stroke='%23e75c3e' stroke-width='6'/><text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='28' fill='%231c140f'>Crust Foodtruck</text><text x='50%' y='56%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='16' fill='%235f4c3f'>Bilde kommer</text></svg>";
-
   const trucks = Array.from({ length: 10 }, (_, index) => ({
     id: index + 1,
     name: `Crust Foodtruck ${index + 1}`,
@@ -46,7 +43,7 @@ function Locations() {
         </div>
         <div className="locations-card">
           <h2>
-            <i class="fa-regular fa-truck"></i> 2026
+            <FontAwesomeIcon icon={faTruck} /> 2026
           </h2>
           <ul>
             <li>10 aktive vogner</li>

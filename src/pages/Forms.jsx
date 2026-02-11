@@ -246,6 +246,9 @@ function Forms() {
                     <Link className="ghost" to={`/skjema/${form.slug}/edit`}>
                       Edit form
                     </Link>
+                    <Link className="ghost" to={`/skjema/${form.slug}/edit`}>
+                      Manage form
+                    </Link>
                   </>
                 ) : null}
               </div>
@@ -260,11 +263,6 @@ function Forms() {
           <>
             <div className="admin-session">
               <p>Innlogget som {user?.email}</p>
-            </div>
-            <div className="admin-actions">
-              <Link className="cta" to="/skjema/stengeskjema/edit">
-                Administrer stengeskjema
-              </Link>
             </div>
 
             <form className="admin-create-form" onSubmit={onCreateForm}>

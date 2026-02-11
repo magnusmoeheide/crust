@@ -1,26 +1,22 @@
 import { Route, Routes, Link, Navigate } from "react-router-dom";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faAnglesRight,
+  faBuildingCircleCheck,
+  faChildReaching,
+  faMapPin,
   faPizzaSlice,
+  faSchool,
   faUserGraduate,
   faHandshake,
   faTruckFast,
 } from "@fortawesome/free-solid-svg-icons";
-import { faCalendar as faCalendarRegular } from "@fortawesome/free-regular-svg-icons";
+import {
+  faCalendar as faCalendarRegular,
+  faCircleCheck,
+} from "@fortawesome/free-regular-svg-icons";
 import Layout from "./components/Layout";
-import Apply from "./pages/Apply";
-import Locations from "./pages/Locations";
-import Partners from "./pages/Partners";
-import About from "./pages/About";
-import Event from "./pages/Event";
-import Frende from "./pages/Frende";
-import Contact from "./pages/Contact";
-import Forms from "./pages/Forms";
-import FormPage from "./pages/FormPage";
-import VarigHadeland from "./pages/VarigHadeland";
-import Obos from "./pages/Obos";
-import Admin from "./pages/Admin";
 import alesund600 from "./assets/optimized/alesund-600.jpg";
 import alesund1200 from "./assets/optimized/alesund-1200.jpg";
 import pizza2_480 from "./assets/optimized/pizza2-480.jpeg";
@@ -30,10 +26,28 @@ import prosess600 from "./assets/optimized/prosess-600.png";
 import prosess1200 from "./assets/optimized/prosess-1200.png";
 import "./App.css";
 
-function Home() {
-  const placeholder =
-    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='900' height='700' viewBox='0 0 900 700'><rect width='900' height='700' fill='%23fff1e2'/><rect x='50' y='50' width='800' height='600' rx='32' fill='%23ffe1c8' stroke='%23e75c3e' stroke-width='6'/><text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='30' fill='%231c140f'>Crust Pizza</text><text x='50%' y='56%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='18' fill='%235f4c3f'>Bilde kommer</text></svg>";
+const Apply = lazy(() => import("./pages/Apply"));
+const Locations = lazy(() => import("./pages/Locations"));
+const Partners = lazy(() => import("./pages/Partners"));
+const About = lazy(() => import("./pages/About"));
+const Event = lazy(() => import("./pages/Event"));
+const Frende = lazy(() => import("./pages/Frende"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Forms = lazy(() => import("./pages/Forms"));
+const FormPage = lazy(() => import("./pages/FormPage"));
+const VarigHadeland = lazy(() => import("./pages/VarigHadeland"));
+const Obos = lazy(() => import("./pages/Obos"));
+const Admin = lazy(() => import("./pages/Admin"));
 
+function withPageLoader(element) {
+  return (
+    <Suspense fallback={<p className="lead">Laster...</p>}>
+      {element}
+    </Suspense>
+  );
+}
+
+function Home() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     const timer = window.setTimeout(() => {
@@ -87,13 +101,14 @@ function Home() {
           </div>
           <div className="hero-notes">
             <span>
-              <i class="fa-solid fa-angles-right"></i> Tidligere Toastmasters
+              <FontAwesomeIcon icon={faAnglesRight} /> Tidligere Toastmasters
             </span>
             <span>
-              <i class="fa-solid fa-child-reaching"></i> Ansetter 15 til 19 år
+              <FontAwesomeIcon icon={faChildReaching} /> Ansetter 15 til 19 år
             </span>
             <span>
-              <i class="fa-solid fa-school"></i> Jobb både i og utenfor skoletid
+              <FontAwesomeIcon icon={faSchool} /> Jobb både i og utenfor
+              skoletid
             </span>
           </div>
         </div>
@@ -102,7 +117,7 @@ function Home() {
       <section id="resultater" className="impact">
         <div className="section-header impact-header-box">
           <h2>
-            Resultater du kan smake <i class="fa-regular fa-circle-check"></i>
+            Resultater du kan smake <FontAwesomeIcon icon={faCircleCheck} />
           </h2>
           <p>
             Crust kombinerer god opplæring, veiledning, tarifflønn og fleksible
@@ -145,7 +160,7 @@ function Home() {
         <div className="program-copy">
           <h2>
             Ditt steg inn i arbeidslivet{" "}
-            <i class="fa-solid fa-building-circle-check"></i>
+            <FontAwesomeIcon icon={faBuildingCircleCheck} />
           </h2>
           <p>
             Hos oss utvikler ungdom sterke arbeidsvaner, fra punktlighet til god
@@ -253,11 +268,11 @@ function Home() {
           </p>
           <div className="visit-actions">
             <a className="cta" href="/event">
-              Bestill servering <i class="fa-solid fa-pizza-slice"></i>
+              Bestill servering <FontAwesomeIcon icon={faPizzaSlice} />
             </a>
 
             <a className="ghost" href="/plasseringer">
-              Hvor finner du oss <i class="fa-solid fa-map-pin"></i>
+              Hvor finner du oss <FontAwesomeIcon icon={faMapPin} />
             </a>
           </div>
         </div>
@@ -271,20 +286,29 @@ function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
-        <Route path="/jobb" element={<Apply />} />
-        <Route path="/plasseringer" element={<Locations />} />
-        <Route path="/partnere" element={<Partners />} />
-        <Route path="/event" element={<Event />} />
-        <Route path="/frende" element={<Frende />} />
-        <Route path="/kontakt" element={<Contact />} />
-        <Route path="/om-oss" element={<About />} />
-        <Route path="/varig-hadeland" element={<VarigHadeland />} />
-        <Route path="/obos" element={<Obos />} />
-        <Route path="/admin" element={<Admin />} />
-        <Route path="/skjema" element={<Forms />} />
-        <Route path="/skjema/:formSlug" element={<FormPage />} />
-        <Route path="/skjema/:formSlug/submissions" element={<FormPage />} />
-        <Route path="/skjema/:formSlug/edit" element={<FormPage />} />
+        <Route path="/jobb" element={withPageLoader(<Apply />)} />
+        <Route path="/plasseringer" element={withPageLoader(<Locations />)} />
+        <Route path="/partnere" element={withPageLoader(<Partners />)} />
+        <Route path="/event" element={withPageLoader(<Event />)} />
+        <Route path="/frende" element={withPageLoader(<Frende />)} />
+        <Route path="/kontakt" element={withPageLoader(<Contact />)} />
+        <Route path="/om-oss" element={withPageLoader(<About />)} />
+        <Route
+          path="/varig-hadeland"
+          element={withPageLoader(<VarigHadeland />)}
+        />
+        <Route path="/obos" element={withPageLoader(<Obos />)} />
+        <Route path="/admin" element={withPageLoader(<Admin />)} />
+        <Route path="/skjema" element={withPageLoader(<Forms />)} />
+        <Route path="/skjema/:formSlug" element={withPageLoader(<FormPage />)} />
+        <Route
+          path="/skjema/:formSlug/submissions"
+          element={withPageLoader(<FormPage />)}
+        />
+        <Route
+          path="/skjema/:formSlug/edit"
+          element={withPageLoader(<FormPage />)}
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
