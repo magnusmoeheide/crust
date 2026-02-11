@@ -162,12 +162,16 @@ function About() {
         <div className="section-header">
           <h2>Teamet</h2>
           <p className="history-body">
-            Vi er et sammensveiset team og styre med erfaring fra både drift,
-            strategi og entreprenørskap. Daglig leder er tidligere lærer og har
-            et sterkt engasjement for å gi ungdom en god start i arbeidslivet.
-            Vi vet hva som skal til for å bygge trygge rammer, gi ansvar og
-            skape mestring. Samtidig har vi solid kompetanse innen økonomi,
-            regnskap, revisjon og finans.
+            Engasjement og lidenskap for å gi muligheter til ungdom er kjernen
+            som binder oss i Crust n' Trust-teamet sammen. Magnus har jobbet som
+            lærer på østkanten i Oslo og startet en skole i Kenya. Sammen med
+            Christian Træland som gir ungdom sommerjobb med is i LICC, bestemte
+            de seg i 2024 for å gjøre noe for ungdommen som faller utenfor.
+            Haakon kom inn for å vokse selskapet, og hans driv for å hjelpe
+            ungdommen har gjort han en integrert del av Crust. Werner, Træland
+            og Hjellegjerde har alle erfaringer som løfter teamet i Crust opp og
+            fram. Resultatet er solid erfaring kombinert med ung energi - og
+            snart flere hundre ungdom i jobb.
           </p>
         </div>
         <div className="team-grid">
