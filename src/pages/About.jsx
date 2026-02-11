@@ -60,7 +60,7 @@ function About() {
       },
     },
     {
-      name: "Jostein Hellgjerde",
+      name: "Jostein Hjellegjerde",
       role: "Styreleder",
       email: "",
       phone: "",
@@ -168,7 +168,7 @@ function About() {
             Christian Træland som gir ungdom sommerjobb med is i LICC, bestemte
             de seg i 2024 for å gjøre noe for ungdommen som faller utenfor.
             Haakon kom inn for å vokse selskapet, og hans driv for å hjelpe
-            ungdommen har gjort han en integrert del av Crust. Werner, Træland
+            ungdommen har gjort han en integrert del av Crust. Hansen, Træland
             og Hjellegjerde har alle erfaringer som løfter teamet i Crust opp og
             fram. Resultatet er solid erfaring kombinert med ung energi - og
             snart flere hundre ungdom i jobb.
