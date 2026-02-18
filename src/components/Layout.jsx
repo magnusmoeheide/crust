@@ -8,6 +8,7 @@ import {
   faHandshake,
   faHouse,
   faLocationDot,
+  faNewspaper,
   faUserPlus,
 } from "@fortawesome/free-solid-svg-icons";
 import crustLogo from "../assets/optimized/crust-logo-1024.png";
@@ -87,6 +88,7 @@ function Layout() {
       "/om-oss": "Om oss",
       "/plasseringer": "Plasseringer",
       "/partnere": "Partnere",
+      "/omtale": "Omtale",
       "/event": "Event",
       "/jobb": "Søk jobb",
       "/frende": "Frende",
@@ -143,6 +145,10 @@ function Layout() {
             <Link to="/partnere">
               <FontAwesomeIcon className="nav-icon" icon={faHandshake} />
               <span className="nav-label">Partnere</span>
+            </Link>
+            <Link to="/omtale">
+              <FontAwesomeIcon className="nav-icon" icon={faNewspaper} />
+              <span className="nav-label">Omtale</span>
             </Link>
             <Link to="/event">
               <FontAwesomeIcon className="nav-icon" icon={faCalendarCheck} />
