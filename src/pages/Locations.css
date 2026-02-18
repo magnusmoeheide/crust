@@ -34,7 +34,8 @@
 
 .locations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 260px));
+  justify-content: start;
   gap: 18px;
 }
 
@@ -47,6 +48,13 @@
   gap: 6px;
 }
 
+.location-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .locations-grid img {
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -56,6 +64,23 @@
 
 .locations-grid h3 {
   margin: 0;
+}
+
+.location-edit-icon {
+  border: 1px solid rgba(15, 14, 10, 0.12);
+  background: #fff;
+  color: var(--accent-dark);
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.location-edit-icon:hover {
+  background: #fff1e2;
 }
 
 .locations-grid p {
@@ -76,4 +101,53 @@
 .locations-grid .location-cta.is-disabled {
   pointer-events: none;
   opacity: 0.6;
+}
+
+.locations-page .admin-box {
+  margin-top: 3em;
+}
+
+.location-admin-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.locations-admin-form {
+  background: #fff7ef;
+  border-radius: 20px;
+  border: 1px solid rgba(15, 14, 10, 0.08);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.locations-admin-form h3 {
+  margin: 0;
+}
+
+.location-edit-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.location-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 14, 10, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 1000;
+}
+
+.location-modal {
+  width: min(560px, 100%);
+}
+
+.location-modal .locations-admin-form {
+  margin: 0;
+  box-shadow: 0 18px 40px rgba(43, 25, 10, 0.25);
 }
