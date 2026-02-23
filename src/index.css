@@ -5,12 +5,12 @@
   line-height: 1.6;
   font-weight: 400;
   color: #1c140f;
-  background-color: #fff8ee;
+  background-color: #75beb8;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 
-  --bg: #fff8ee;
+  --bg: #75beb8;
   --panel: #fff1e2;
   --ink: #1c140f;
   --muted: #5f4c3f;

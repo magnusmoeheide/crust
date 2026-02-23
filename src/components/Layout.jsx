@@ -12,6 +12,7 @@ import {
   faUserPlus,
 } from "@fortawesome/free-solid-svg-icons";
 import crustLogo from "../assets/optimized/crust-logo-1024.png";
+import tmLogo from "../assets/tm-logo-transparent.png";
 import "../App.css";
 
 const LOGO_CACHE_KEY = "crust-brand-logo-v1";
@@ -92,6 +93,8 @@ function Layout() {
       "/event": "Event",
       "/jobb": "Søk jobb",
       "/frende": "Frende",
+      "/varig-hadeland": "Varig Hadeland",
+      "/obos": "OBOS",
       "/kontakt": "Kontakt",
       "/admin": "Admin",
       "/skjema": "Skjemaer",
@@ -111,6 +114,11 @@ function Layout() {
   return (
     <div className="page">
       <div className="rename-banner">
+        <img
+          className="rename-banner-logo"
+          src={tmLogo}
+          alt="Toastmasters logo"
+        />
         <span>Toastmasters har byttet navn til Crust n' Trust</span>
       </div>
       <header className="site-header">

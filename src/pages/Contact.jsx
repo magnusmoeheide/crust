@@ -77,7 +77,7 @@ function Contact() {
             type="button"
             onClick={() => setIsPartnerOpen(true)}
           >
-            Kontakt partneransvarlig
+            Kontakt oss
           </button>
         </article>
         <article className="contact-feedback">
@@ -134,7 +134,7 @@ function Contact() {
           className="modal-backdrop"
           role="dialog"
           aria-modal="true"
-          aria-label="Kontakt partneransvarlig"
+          aria-label="Kontakt oss"
           onClick={() => setIsPartnerOpen(false)}
         >
           <div
@@ -149,7 +149,7 @@ function Contact() {
             >
               Lukk
             </button>
-            <h3>Kontakt partneransvarlig</h3>
+            <h3>Kontakt oss</h3>
             <p>
               <strong>E-post:</strong>{" "}
               <a href="mailto:haakon@crust.no">haakon@crust.no</a>

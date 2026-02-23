@@ -43,6 +43,58 @@ function sanitizeFileName(name) {
     .replace(/-+/g, "-");
 }
 
+async function optimizePublicationImage(file) {
+  if (!file || !file.type?.startsWith("image/")) {
+    return file;
+  }
+
+  const maxSize = 1200;
+  const quality = 0.8;
+
+  try {
+    const imageUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = imageUrl;
+    await img.decode();
+
+    const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+    const targetWidth = Math.max(1, Math.round(img.width * scale));
+    const targetHeight = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      URL.revokeObjectURL(imageUrl);
+      return file;
+    }
+
+    context.drawImage(img, 0, 0, targetWidth, targetHeight);
+    URL.revokeObjectURL(imageUrl);
+
+    const compressedBlob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", quality);
+    });
+
+    if (!compressedBlob) {
+      return file;
+    }
+
+    if (compressedBlob.size >= file.size) {
+      return file;
+    }
+
+    const baseName = sanitizeFileName(file.name).replace(/\.[^.]+$/, "");
+    return new File([compressedBlob], `${baseName}.jpg`, {
+      type: "image/jpeg",
+    });
+  } catch {
+    return file;
+  }
+}
+
 function toSortTime(item) {
   const dateValue = item?.publicationDate;
   if (typeof dateValue === "string" && dateValue) {
@@ -71,7 +123,11 @@ function formatPublicationDate(value) {
 }
 
 function resolveAccessType(item) {
-  if (item?.accessType === "public" || item?.accessType === "paywall" || item?.accessType === "internal") {
+  if (
+    item?.accessType === "public" ||
+    item?.accessType === "paywall" ||
+    item?.accessType === "internal"
+  ) {
     return item.accessType;
   }
   if (typeof item?.isPublic === "boolean") {
@@ -188,9 +244,10 @@ function Publications() {
 
     setFormState({ saving: true, error: "" });
     try {
-      const imagePath = `publications/images/${Date.now()}-${sanitizeFileName(newImageFile.name)}`;
-      await uploadBytes(ref(storage, imagePath), newImageFile, {
-        contentType: newImageFile.type || "image/jpeg",
+      const optimizedImage = await optimizePublicationImage(newImageFile);
+      const imagePath = `publications/images/${Date.now()}-${sanitizeFileName(optimizedImage.name)}`;
+      await uploadBytes(ref(storage, imagePath), optimizedImage, {
+        contentType: optimizedImage.type || "image/jpeg",
       });
       const imageUrl = await getDownloadURL(ref(storage, imagePath));
 
@@ -253,9 +310,10 @@ function Publications() {
     try {
       let imageUrl = editItem.imageUrl || "";
       if (editImageFile) {
-        const imagePath = `publications/images/${Date.now()}-${sanitizeFileName(editImageFile.name)}`;
-        await uploadBytes(ref(storage, imagePath), editImageFile, {
-          contentType: editImageFile.type || "image/jpeg",
+        const optimizedImage = await optimizePublicationImage(editImageFile);
+        const imagePath = `publications/images/${Date.now()}-${sanitizeFileName(optimizedImage.name)}`;
+        await uploadBytes(ref(storage, imagePath), optimizedImage, {
+          contentType: optimizedImage.type || "image/jpeg",
         });
         imageUrl = await getDownloadURL(ref(storage, imagePath));
       }
@@ -290,7 +348,7 @@ function Publications() {
     <div className="publications-page">
       <header className="publications-hero">
         <p className="eyebrow">Omtale</p>
-        <h1>Publications og medieoppslag</h1>
+        <h1>Omtale og medieoppslag</h1>
         <p className="lead">
           Her finner du omtale av Crust n&apos; Trust (tidligere Toastmasters).
           Klikk deg videre til saken for å lese mer.
@@ -497,7 +555,9 @@ function Publications() {
                           }))
                         }
                       >
-                        <option value="public">Åpen (ingen betalingsmur)</option>
+                        <option value="public">
+                          Åpen (ingen betalingsmur)
+                        </option>
                         <option value="paywall">Bak betalingsmur</option>
                         <option value="internal">Intern</option>
                       </select>
@@ -653,7 +713,9 @@ function Publications() {
                           }))
                         }
                       >
-                        <option value="public">Åpen (ingen betalingsmur)</option>
+                        <option value="public">
+                          Åpen (ingen betalingsmur)
+                        </option>
                         <option value="paywall">Bak betalingsmur</option>
                         <option value="internal">Intern</option>
                       </select>

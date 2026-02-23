@@ -64,7 +64,7 @@ function Apply() {
         <h2>Søknad</h2>
         <div className="apply-link">
           {settingsLoading ? (
-            <p>Laster...</p>
+            <div className="loading-box">Laster...</div>
           ) : acceptingApplications ? (
             <>
               <p>Søknadsskjemaet åpnes i ny fane.</p>

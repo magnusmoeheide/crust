@@ -42,7 +42,7 @@ const Publications = lazy(() => import("./pages/Publications"));
 
 function withPageLoader(element) {
   return (
-    <Suspense fallback={<p className="lead">Laster...</p>}>
+    <Suspense fallback={<div className="loading-box">Laster...</div>}>
       {element}
     </Suspense>
   );
@@ -201,7 +201,7 @@ function Home() {
               <span className="step-number">3</span> Steget videre
             </h3>
             <p>
-              Få hjelp med CV, anbefalingsbrev og oppfølging videre etterpå.
+              Få hjelp med CV, attest og oppfølging videre etterpå.
             </p>
           </div>
         </div>

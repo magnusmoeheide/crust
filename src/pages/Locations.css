@@ -1,5 +1,8 @@
 .locations-page {
   padding: 40px 6vw 80px;
+  background: #ffe1c8;
+  border-radius: 24px;
+  border: 1px solid rgba(15, 14, 10, 0.08);
 }
 
 .locations-hero {
@@ -34,8 +37,8 @@
 
 .locations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 260px));
-  justify-content: start;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
   gap: 18px;
 }
 
@@ -150,4 +153,22 @@
 .location-modal .locations-admin-form {
   margin: 0;
   box-shadow: 0 18px 40px rgba(43, 25, 10, 0.25);
+}
+
+@media (max-width: 1100px) {
+  .locations-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .locations-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .locations-grid {
+    grid-template-columns: 1fr;
+  }
 }
