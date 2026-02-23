@@ -309,6 +309,10 @@
   max-width: 520px;
 }
 
+.hero-copy .lead {
+  color: #182c3c;
+}
+
 .hero-actions {
   display: flex;
   gap: 16px;

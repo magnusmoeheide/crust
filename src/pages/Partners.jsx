@@ -4,19 +4,19 @@ import { faHandshake } from "@fortawesome/free-solid-svg-icons";
 import frendeLogo from "../assets/Frende-logo.png";
 import navLogo from "../assets/optimized/nav-logo-1200.png";
 import varigLogo from "../assets/varig-hadeland.webp";
-import obosLogo from "../assets/obos-logo.png";
+import opsahlLogo from "../assets/Opsahl-gruppen.webp";
 import osloKommuneLogo from "../assets/oslo-kommune.png";
 import "./Partners.css";
 
 function Partners() {
   const placeholder =
-    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='360' height='220' viewBox='0 0 360 220'><rect width='360' height='220' fill='%23fff1e2'/><rect x='18' y='18' width='324' height='184' rx='18' fill='%23ffe1c8' stroke='%23e75c3e' stroke-width='4'/><text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='18' fill='%231c140f'>Partnerlogo</text></svg>";
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='360' height='220' viewBox='0 0 360 220'><rect width='360' height='220' fill='%23fff1e2'/><rect x='18' y='18' width='324' height='184' rx='18' fill='%23ffe1c8' stroke='%23e75c3e' stroke-width='4'/><text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='18' fill='%23182c3c'>Partnerlogo</text></svg>";
 
   const partners = [
     {
       name: "Frende Forsikring",
       focus:
-        "Hovedpartner.\nFrende har gjort betydelige bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom, samt lære opp ungdommen i Norges beste kundeservice.",
+        "Hovedpartner.\nFrende har gjort betydelige bidrag i 2025 og 2026 for å etablere og utvikle arbeidsplasser for ungdom, \nsamt lære opp ungdommen i Norges beste kundeservice.",
       logo: frendeLogo,
     },
     {
@@ -26,10 +26,10 @@ function Partners() {
       logo: varigLogo,
     },
     {
-      name: "OBOS",
+      name: "Opsahl Eiendom",
       focus:
-        "Har hatt 1 vogn siden 2025, \nsom gir arbeidsplass til 10 ungdom hvert år.",
-      logo: obosLogo,
+        "Bidrar med kontor- og lagerlokaler på Skullerud, \nog satset tidlig på prosjektet ved å tilby kiosklokale.",
+      logo: opsahlLogo,
     },
     {
       name: "NAV",
@@ -49,7 +49,6 @@ function Partners() {
   const linkMap = {
     "Frende Forsikring": "/frende",
     "Varig Hadeland Forsikring": "/varig-hadeland",
-    OBOS: "/obos",
   };
 
   return (
@@ -90,15 +89,13 @@ function Partners() {
                 className={
                   partner.name === "Frende Forsikring"
                     ? "partner-logo frende-logo"
-                    : partner.name === "OBOS"
-                      ? "partner-logo obos-logo"
-                      : partner.name === "Varig Hadeland Forsikring"
-                        ? "partner-logo varig-logo"
-                        : partner.name === "NAV"
-                          ? "partner-logo nav-logo"
-                          : partner.name === "Oslo kommune"
-                            ? "partner-logo oslo-logo"
-                            : "partner-logo"
+                    : partner.name === "Varig Hadeland Forsikring"
+                      ? "partner-logo varig-logo"
+                      : partner.name === "NAV"
+                        ? "partner-logo nav-logo"
+                        : partner.name === "Oslo kommune"
+                          ? "partner-logo oslo-logo"
+                          : "partner-logo"
                 }
                 src={partner.logo ?? placeholder}
                 alt={`${partner.name} logo`}
@@ -115,6 +112,11 @@ function Partners() {
           );
         })}
       </section>
+      <p className="partner-contact-line">
+        Vil du gi muligheter til ungdom? Ta kontakt på{" "}
+        <a href="tel:+4747388646">+47 473 88 646</a> /{" "}
+        <a href="mailto:haakon@crust.no">haakon@crust.no</a>
+      </p>
     </div>
   );
 }

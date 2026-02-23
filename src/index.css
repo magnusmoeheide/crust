@@ -4,7 +4,7 @@
   font-family: "Space Grotesk", sans-serif;
   line-height: 1.6;
   font-weight: 400;
-  color: #1c140f;
+  color: #182c3c;
   background-color: #75beb8;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -12,7 +12,7 @@
 
   --bg: #75beb8;
   --panel: #fff1e2;
-  --ink: #1c140f;
+  --ink: #182c3c;
   --muted: #5f4c3f;
   --accent: #fb7f59;
   --accent-ink: #fbf9db;
