@@ -70,9 +70,8 @@ function Home() {
         <div className="hero-content">
           <div className="hero-copy">
             <p className="lead">
-              <strong>Vogna som gir jobb til ungdom som står utenfor.</strong>
-              <br /> I 2025 ga vi, under navnet Toastmasters, 100 ungdommer sin
-              aller første jobb og en fot innenfor arbeidslivet. <br />
+              I 2025 ga vi, under navnet Toastmasters, 100 ungdommer sin aller
+              første jobb og en fot innenfor arbeidslivet. <br />
             </p>
             <p className="lead">
               Nå er vi Crust n' Trust, hvor vi skal gi 100 nye ungdommer dobbelt
