@@ -126,6 +126,17 @@
   width: fit-content;
 }
 
+.apply-waitlist-form {
+  display: grid;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.apply-waitlist-form label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
 .apply-form form {
   display: grid;
   gap: 18px;
@@ -155,12 +166,14 @@ label {
   font-size: 0.95rem;
 }
 
-.form-status.success {
-  color: #2b6b4b;
+.apply-form .apply-link .form-status.success {
+  color: #1f7a45;
+  font-weight: 700;
 }
 
-.form-status.error {
+.apply-form .apply-link .form-status.error {
   color: #b23c2a;
+  font-weight: 600;
 }
 
 button[disabled] {

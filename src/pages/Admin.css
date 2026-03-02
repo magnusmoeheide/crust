@@ -59,3 +59,124 @@
 .danger-button:hover {
   background: rgba(141, 31, 8, 0.08);
 }
+
+.admin-status-select {
+  width: min(100%, 320px);
+  appearance: none;
+  border: 1px solid rgba(24, 44, 60, 0.35);
+  border-radius: 12px;
+  padding: 10px 40px 10px 12px;
+  background: #fff7ef;
+  color: #182c3c;
+  font: inherit;
+  font-weight: 600;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  background-image: linear-gradient(45deg, transparent 50%, #5f4c3f 50%),
+    linear-gradient(135deg, #5f4c3f 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size:
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+}
+
+.admin-status-select:hover {
+  border-color: rgba(24, 44, 60, 0.6);
+}
+
+.admin-status-select:focus {
+  outline: none;
+  border-color: #2f6fde;
+  box-shadow: 0 0 0 3px rgba(47, 111, 222, 0.18);
+}
+
+.admin-status-select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.admin-email-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-email-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(24, 44, 60, 0.2);
+  border-radius: 12px;
+  background: #fff7ef;
+  padding: 8px 10px;
+}
+
+.admin-email-item p {
+  margin: 0;
+  word-break: break-word;
+}
+
+.admin-email-contact {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.admin-email-name {
+  font-weight: 700;
+}
+
+.admin-email-item span {
+  color: #5f4c3f;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.admin-email-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.admin-delete-button {
+  border-color: rgba(141, 31, 8, 0.45);
+  color: #8d1f08;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  line-height: 1.1;
+}
+
+.admin-delete-button:hover {
+  background: rgba(141, 31, 8, 0.08);
+}
+
+.admin-delete-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .admin-email-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-email-contact {
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
+  }
+
+  .admin-email-actions {
+    white-space: normal;
+  }
+}

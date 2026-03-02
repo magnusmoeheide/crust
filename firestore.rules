@@ -32,6 +32,11 @@ service cloud.firestore {
       allow create, update, delete: if isCrustUser();
     }
 
+    match /jobPortalWaitlist/{docId} {
+      allow create: if true;
+      allow read, update, delete: if isCrustUser();
+    }
+
     match /formSubmissions/{docId} {
       allow create: if true;
       allow read, delete: if isCrustUser();
