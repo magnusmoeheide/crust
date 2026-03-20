@@ -96,6 +96,7 @@ function Layout() {
       "/varig-hadeland": "Varig Hadeland",
       "/obos": "OBOS",
       "/kontakt": "Kontakt",
+      "/varsling": "Varsling",
       "/admin": "Admin",
       "/skjema": "Skjemaer",
     };

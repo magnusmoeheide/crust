@@ -39,6 +39,7 @@ const VarigHadeland = lazy(() => import("./pages/VarigHadeland"));
 const Obos = lazy(() => import("./pages/Obos"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Publications = lazy(() => import("./pages/Publications"));
+const Varsling = lazy(() => import("./pages/Varsling"));
 
 function withPageLoader(element) {
   return (
@@ -294,6 +295,7 @@ function App() {
         <Route path="/kontakt" element={withPageLoader(<Contact />)} />
         <Route path="/om-oss" element={withPageLoader(<About />)} />
         <Route path="/omtale" element={withPageLoader(<Publications />)} />
+        <Route path="/varsling" element={withPageLoader(<Varsling />)} />
         <Route
           path="/varig-hadeland"
           element={withPageLoader(<VarigHadeland />)}
