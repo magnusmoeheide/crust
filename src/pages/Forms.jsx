@@ -244,7 +244,20 @@ function Forms() {
                     >
                       Submissions
                     </Link>
-                    <Link className="ghost" to={`/skjema/${form.slug}/edit`}>
+                    <Link
+                      className="ghost"
+                      to={`/skjema/${form.slug}/historikk`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Historikk
+                    </Link>
+                    <Link
+                      className="ghost"
+                      to={`/skjema/${form.slug}/edit`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       Edit form
                     </Link>
                   </>

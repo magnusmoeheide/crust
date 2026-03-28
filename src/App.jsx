@@ -313,6 +313,10 @@ function App() {
           element={withPageLoader(<FormPage />)}
         />
         <Route
+          path="/skjema/:formSlug/historikk"
+          element={withPageLoader(<FormPage />)}
+        />
+        <Route
           path="/skjema/:formSlug/edit"
           element={withPageLoader(<FormPage />)}
         />

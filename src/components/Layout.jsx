@@ -21,7 +21,8 @@ function Layout() {
   const location = useLocation();
   const isStandaloneFormPage =
     /^\/skjema\/[^/]+$/.test(location.pathname) ||
-    /^\/skjema\/[^/]+\/kvittering\/[^/]+$/.test(location.pathname);
+    /^\/skjema\/[^/]+\/kvittering\/[^/]+$/.test(location.pathname) ||
+    /^\/skjema\/[^/]+\/historikk$/.test(location.pathname);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [logoSrc, setLogoSrc] = useState(() => {
     if (typeof window === "undefined") {

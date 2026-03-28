@@ -146,6 +146,8 @@ function normalizeQuestion(question, index) {
     placeholder: String(question?.placeholder || ''),
     imageUrl: String(question?.imageUrl || '').trim(),
     imageZoom: normalizeImageZoom(question?.imageZoom),
+    includeInAnalysis: type === 'section' ? false : Boolean(question?.includeInAnalysis),
+    analysisLabel: type === 'section' ? '' : String(question?.analysisLabel || '').trim(),
     helpTextColor: String(question?.helpTextColor || '').trim(),
     helpTextBold: Boolean(question?.helpTextBold),
     selectOptionDetails,
@@ -352,6 +354,15 @@ function getSelectOptionBehavior(question, selectedOption) {
   }
 }
 
+function getHistoryAnswerValues(submission, question) {
+  const mainValue = submission.answers?.[question.id]
+  const detailValue = submission.answers?.[getSelectDetailAnswerKey(question.id)]
+
+  return [mainValue, detailValue]
+    .filter((value) => String(value || '').trim())
+    .map((value) => (isStorageImagePath(value) ? 'Bilde vedlagt' : String(value || '-')))
+}
+
 function getAnswerDisplayLabel(answerKey, answers, questions = []) {
   const detailQuestionId = answerKey.endsWith(SELECT_DETAIL_SUFFIX)
     ? answerKey.slice(0, -SELECT_DETAIL_SUFFIX.length)
@@ -414,6 +425,8 @@ function createEditorQuestion(seed) {
     placeholder: '',
     imageUrl: '',
     imageZoom: 1,
+    includeInAnalysis: false,
+    analysisLabel: '',
     helpTextColor: '',
     helpTextBold: false,
     selectOptionDetails: {},
@@ -534,9 +547,10 @@ function FormPage() {
   const activeFormSlug = String(formSlug || STENGESKJEMA_ID).trim().toLowerCase()
   const isDefaultForm = activeFormSlug === STENGESKJEMA_ID
   const isSubmissionsView = location.pathname.endsWith('/submissions')
+  const isHistoryView = location.pathname.endsWith('/historikk')
   const isEditPage = location.pathname.endsWith('/edit')
   const isReceiptPage = location.pathname.includes('/kvittering/')
-  const isStandalonePublicForm = !isSubmissionsView && !isEditPage
+  const isStandalonePublicForm = !isSubmissionsView && !isEditPage && !isHistoryView
 
   const [formData, setFormData] = useState(defaultStengeskjema)
   const [formDocId, setFormDocId] = useState(STENGESKJEMA_ID)
@@ -544,14 +558,17 @@ function FormPage() {
   const [locationOtherAnswers, setLocationOtherAnswers] = useState({})
   const [selectDetailAnswers, setSelectDetailAnswers] = useState({})
   const [selectDetailFiles, setSelectDetailFiles] = useState({})
+  const [selectDetailPreviews, setSelectDetailPreviews] = useState({})
   const [selfDeclarationAccepted, setSelfDeclarationAccepted] = useState(false)
   const [cameraFiles, setCameraFiles] = useState({})
+  const [cameraPreviews, setCameraPreviews] = useState({})
   const [formInstanceKey, setFormInstanceKey] = useState(0)
   const [loadingForm, setLoadingForm] = useState(true)
   const [availableLocations, setAvailableLocations] = useState([])
   const [loadingLocations, setLoadingLocations] = useState(true)
   const [draftReady, setDraftReady] = useState(false)
   const [submitState, setSubmitState] = useState({ submitting: false, message: '', error: '' })
+  const [submitOverlay, setSubmitOverlay] = useState({ open: false, status: 'idle' })
 
   const [editorTitle, setEditorTitle] = useState(defaultStengeskjema.title)
   const [editorDescription, setEditorDescription] = useState(defaultStengeskjema.description)
@@ -646,6 +663,28 @@ function FormPage() {
       cancelled = true
     }
   }, [activeFormSlug, isDefaultForm])
+
+  useEffect(() => {
+    if (submitState.submitting) {
+      setSubmitOverlay({ open: true, status: 'submitting' })
+      return
+    }
+
+    if (submitState.message) {
+      setSubmitOverlay({ open: true, status: 'success' })
+      const timeoutId = window.setTimeout(() => {
+        setSubmitOverlay({ open: false, status: 'idle' })
+      }, 1800)
+
+      return () => {
+        window.clearTimeout(timeoutId)
+      }
+    }
+
+    if (submitState.error) {
+      setSubmitOverlay({ open: false, status: 'idle' })
+    }
+  }, [submitState.error, submitState.message, submitState.submitting])
 
   useEffect(() => {
     if (loadingForm) {
@@ -1019,6 +1058,79 @@ function FormPage() {
     }))
   }
 
+  async function onCameraFileChange(questionId, file) {
+    setCameraFiles((previous) => ({
+      ...previous,
+      [questionId]: file,
+    }))
+    onAnswerChange(questionId, file ? file.name : '')
+
+    if (!file) {
+      setCameraPreviews((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+      return
+    }
+
+    try {
+      const previewUrl = await readFileAsDataUrl(file)
+      setCameraPreviews((previous) => ({
+        ...previous,
+        [questionId]: previewUrl,
+      }))
+    } catch {
+      setCameraPreviews((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+    }
+  }
+
+  async function onSelectDetailCameraFileChange(questionId, file) {
+    setSelectDetailFiles((previous) => ({
+      ...previous,
+      [questionId]: file,
+    }))
+
+    if (!file) {
+      setSelectDetailPreviews((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+      return
+    }
+
+    try {
+      const previewUrl = await readFileAsDataUrl(file)
+      setSelectDetailPreviews((previous) => ({
+        ...previous,
+        [questionId]: previewUrl,
+      }))
+    } catch {
+      setSelectDetailPreviews((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+    }
+  }
+
   function resetAllAnswers() {
     const confirmed = window.confirm('Nullstill alle svar i skjemaet?')
     if (!confirmed) {
@@ -1037,8 +1149,10 @@ function FormPage() {
     setLocationOtherAnswers({})
     setSelectDetailAnswers({})
     setSelectDetailFiles({})
+    setSelectDetailPreviews({})
     setSelfDeclarationAccepted(false)
     setCameraFiles({})
+    setCameraPreviews({})
     setFormInstanceKey((previous) => previous + 1)
     clearFormDraft(activeFormSlug)
     setSubmitState({
@@ -1109,6 +1223,7 @@ function FormPage() {
       const submissionRef = doc(collection(db, 'formSubmissions'))
       const receiptRef = doc(collection(db, 'formSubmissionReceipts'))
       const imagePaths = []
+      const receiptImageMap = {}
       const submissionAnswers = { ...answers }
 
       formData.questions.forEach((question) => {
@@ -1169,8 +1284,10 @@ function FormPage() {
           await uploadBytes(ref(storage, path), file, {
             contentType: file.type,
           })
+          const downloadUrl = await getDownloadURL(ref(storage, path))
           imagePaths.push(path)
           submissionAnswers[question.id] = path
+          receiptImageMap[path] = downloadUrl
         }),
       )
 
@@ -1197,6 +1314,7 @@ function FormPage() {
             contentType: file.type,
           })
           submissionAnswers[getSelectDetailAnswerKey(question.id)] = path
+          receiptImageMap[path] = await getDownloadURL(ref(storage, path))
         }),
       )
 
@@ -1225,6 +1343,7 @@ function FormPage() {
         submittedAtIso,
         answers: submissionAnswers,
         imagePaths,
+        imageUrls: receiptImageMap,
         createdAt: serverTimestamp(),
       })
 
@@ -1241,8 +1360,10 @@ function FormPage() {
       setLocationOtherAnswers({})
       setSelectDetailAnswers({})
       setSelectDetailFiles({})
+      setSelectDetailPreviews({})
       setSelfDeclarationAccepted(false)
       setCameraFiles({})
+      setCameraPreviews({})
       setFormInstanceKey((previous) => previous + 1)
       setSubmitState({
         submitting: false,
@@ -1454,6 +1575,7 @@ function FormPage() {
         placeholder: '',
         imageUrl: '',
         imageZoom: 1,
+        includeInAnalysis: false,
         helpTextColor: '',
         helpTextBold: false,
         selectOptionDetails: {},
@@ -1818,6 +1940,7 @@ function FormPage() {
       const selectedBehavior = getSelectOptionBehavior(question, value)
       const detailPrompt = selectedBehavior.text.trim() || 'Beskriv nærmere'
       const detailFile = selectDetailFiles[question.id] || null
+      const detailPreview = selectDetailPreviews[question.id] || ''
       const detailFileInputId = `${question.id}-detail-camera-input`
 
       return (
@@ -1839,6 +1962,14 @@ function FormPage() {
                   return next
                 })
                 setSelectDetailFiles((previous) => {
+                  if (typeof previous[question.id] === 'undefined') {
+                    return previous
+                  }
+                  const next = { ...previous }
+                  delete next[question.id]
+                  return next
+                })
+                setSelectDetailPreviews((previous) => {
                   if (typeof previous[question.id] === 'undefined') {
                     return previous
                   }
@@ -1892,7 +2023,7 @@ function FormPage() {
                 className="ghost camera-upload-button"
                 onClick={() => document.getElementById(detailFileInputId)?.click()}
               >
-                Ta bilde
+                {detailFile ? 'Last opp nytt bilde' : 'Ta bilde'}
               </button>
               <input
                 id={detailFileInputId}
@@ -1900,14 +2031,17 @@ function FormPage() {
                 accept="image/*"
                 capture="environment"
                 className="camera-upload-input"
-                onChange={(event) => {
+                onChange={async (event) => {
                   const file = event.target.files?.[0] || null
-                  setSelectDetailFiles((previous) => ({
-                    ...previous,
-                    [question.id]: file,
-                  }))
+                  await onSelectDetailCameraFileChange(question.id, file)
+                  event.target.value = ''
                 }}
               />
+              {detailPreview ? (
+                <div className="camera-upload-preview">
+                  <img src={detailPreview} alt={`${question.label} bilde`} />
+                </div>
+              ) : null}
               {detailFile ? <small>Valgt: {detailFile.name}</small> : null}
             </div>
           ) : null}
@@ -1980,6 +2114,7 @@ function FormPage() {
 
     if (question.type === 'camera') {
       const fileInputId = `${question.id}-camera-input`
+      const cameraPreview = cameraPreviews[question.id] || ''
 
       return (
         <div className="camera-upload-control">
@@ -1988,7 +2123,7 @@ function FormPage() {
             className="ghost camera-upload-button"
             onClick={() => document.getElementById(fileInputId)?.click()}
           >
-            Ta bilde
+            {cameraFiles[question.id] ? 'Last opp nytt bilde' : 'Ta bilde'}
           </button>
           <input
             id={fileInputId}
@@ -1996,15 +2131,17 @@ function FormPage() {
             accept="image/*"
             capture="environment"
             className="camera-upload-input"
-            onChange={(event) => {
+            onChange={async (event) => {
               const file = event.target.files?.[0] || null
-              setCameraFiles((previous) => ({
-                ...previous,
-                [question.id]: file,
-              }))
-              onAnswerChange(question.id, file ? file.name : '')
+              await onCameraFileChange(question.id, file)
+              event.target.value = ''
             }}
           />
+          {cameraPreview ? (
+            <div className="camera-upload-preview">
+              <img src={cameraPreview} alt={`${question.label} bilde`} />
+            </div>
+          ) : null}
           {cameraFiles[question.id] ? (
             <small>Valgt: {cameraFiles[question.id].name}</small>
           ) : null}
@@ -2107,18 +2244,58 @@ function FormPage() {
       return accumulator
     }, [])
     .sort((a, b) => a.location.localeCompare(b.location, 'nb'))
+  const analysisQuestions = formData.questions.filter(
+    (question) => !isSectionQuestion(question) && Boolean(question.includeInAnalysis),
+  )
+  const locationOrder = availableLocations.map((location) => String(location.name || '').trim()).filter(Boolean)
+  const historyByLocation = submissions
+    .reduce((accumulator, submission) => {
+      const location = getSubmissionLocation(submission.answers, formData.questions) || 'Ukjent lokasjon'
+      const entry = accumulator.get(location) || []
+      entry.push(submission)
+      accumulator.set(location, entry)
+      return accumulator
+    }, new Map())
+  const historyRows = Array.from(historyByLocation.entries())
+    .map(([location, items]) => ({
+      location,
+      items: items.sort((a, b) => {
+        const aSeconds = a.submittedAt?.seconds || 0
+        const bSeconds = b.submittedAt?.seconds || 0
+        return bSeconds - aSeconds
+      }),
+    }))
+    .sort((a, b) => {
+      const aIndex = locationOrder.indexOf(a.location)
+      const bIndex = locationOrder.indexOf(b.location)
+      if (aIndex !== -1 || bIndex !== -1) {
+        if (aIndex === -1) {
+          return 1
+        }
+        if (bIndex === -1) {
+          return -1
+        }
+        return aIndex - bIndex
+      }
+      return a.location.localeCompare(b.location, 'nb')
+    })
   const receiptAnswerEntries = getOrderedAnswerEntries(receiptSubmission?.answers || {}, formData.questions)
   const heroEyebrow = isReceiptPage ? 'Kvittering' : 'Skjema'
   const heroTitle = isReceiptPage ? `Takk, ${formData.title} er sendt inn` : formData.title
   const heroLead = isReceiptPage
     ? 'Her er en kopi av akkurat denne innsendingen.'
     : formData.description
+  const showPublicFacingHeader = !isSubmissionsView && !isEditPage && !isHistoryView
 
   let publicQuestionOrder = 0
 
   return (
-    <div className={`forms-page stengeskjema-page ${isStandalonePublicForm ? 'public-form-page' : ''}`}>
-      {!isStandalonePublicForm ? (
+    <div
+      className={`forms-page stengeskjema-page ${isStandalonePublicForm ? 'public-form-page' : ''} ${
+        isHistoryView ? 'history-page' : ''
+      }`}
+    >
+      {!isStandalonePublicForm && !isSubmissionsView && !isEditPage && !isHistoryView ? (
         <Link className="admin-login-link" to="/skjema">
           Tilbake til alle skjema
         </Link>
@@ -2127,17 +2304,19 @@ function FormPage() {
         <section className="form-entry">
           <p>Laster kvittering...</p>
         </section>
-      ) : !isSubmissionsView && !isEditPage && !isReceiptPage && !isPublicFormReady ? (
+      ) : !isSubmissionsView && !isEditPage && !isHistoryView && !isReceiptPage && !isPublicFormReady ? (
         <section className="form-entry">
           <p>Laster skjema...</p>
         </section>
       ) : (
         <>
-          <header className="forms-hero">
-            <p className="eyebrow">{heroEyebrow}</p>
-            <h1>{heroTitle}</h1>
-            <p className="lead">{heroLead}</p>
-          </header>
+          {showPublicFacingHeader ? (
+            <header className="forms-hero">
+              <p className="eyebrow">{heroEyebrow}</p>
+              <h1>{heroTitle}</h1>
+              <p className="lead">{heroLead}</p>
+            </header>
+          ) : null}
 
           {isReceiptPage ? (
             <section className="form-entry receipt-entry">
@@ -2158,7 +2337,9 @@ function FormPage() {
 
                   <div className="receipt-answer-list">
                     {receiptAnswerEntries.map(([key, value]) => {
-                      const imageUrl = isStorageImagePath(value) ? receiptImageUrls[value] : ''
+                      const imageUrl = isStorageImagePath(value)
+                        ? receiptSubmission.imageUrls?.[value] || receiptImageUrls[value] || ''
+                        : ''
 
                       return (
                         <article key={key} className="receipt-answer-row">
@@ -2178,7 +2359,7 @@ function FormPage() {
                             />
                           ) : (
                             <p className="receipt-answer-value">
-                              {isStorageImagePath(value) ? 'Bilde vedlagt' : String(value || '-')}
+                              {isStorageImagePath(value) ? 'Laster bilde...' : String(value || '-')}
                             </p>
                           )}
                         </article>
@@ -2188,7 +2369,7 @@ function FormPage() {
                 </>
               ) : null}
             </section>
-          ) : !isSubmissionsView && !isEditPage ? (
+          ) : !isSubmissionsView && !isEditPage && !isHistoryView ? (
             <section className="form-entry">
               <div className="form-entry-header">
                 <button type="button" className="ghost reset-form-button" onClick={resetAllAnswers}>
@@ -2246,7 +2427,6 @@ function FormPage() {
                 ) : null}
 
                 {submitState.error ? <p className="forms-error">{submitState.error}</p> : null}
-                {submitState.message ? <p className="forms-success">{submitState.message}</p> : null}
 
                 <button
                   type="submit"
@@ -2258,17 +2438,37 @@ function FormPage() {
               </form>
             </section>
           ) : null}
+
+          {submitOverlay.open && !isReceiptPage && !isSubmissionsView && !isEditPage ? (
+            <div className="submit-overlay" role="status" aria-live="polite" aria-busy={submitOverlay.status === 'submitting'}>
+              <div className={`submit-overlay-card is-${submitOverlay.status}`}>
+                {submitOverlay.status === 'submitting' ? (
+                  <>
+                    <div className="submit-overlay-spinner" aria-hidden="true" />
+                    <p>Sender skjema...</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="submit-overlay-check" aria-hidden="true">
+                      ✓
+                    </div>
+                    <p>Skjema sendt inn</p>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
         </>
       )}
 
-      {isEditPage && !isAdmin && !loading ? (
+      {(isEditPage || isSubmissionsView || isHistoryView) && !isAdmin && !loading ? (
         <section className="admin-login-line">
-          <p className="forms-error">Kun admin kan redigere skjema.</p>
+          <p className="forms-error">Kun admin har tilgang til denne siden.</p>
         </section>
       ) : null}
 
-      {isAdmin && (isSubmissionsView || isEditPage) ? (
-        <section className={isEditPage || isSubmissionsView ? 'admin-edit-shell' : 'admin-box'}>
+      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView) ? (
+        <section className={isEditPage || isSubmissionsView || isHistoryView ? 'admin-edit-shell' : 'admin-box'}>
           {loading ? <p>Kontrollerer innlogging...</p> : null}
           {error ? <p className="forms-error">{error}</p> : null}
 
@@ -2603,6 +2803,31 @@ function FormPage() {
                             />
                             Obligatorisk
                           </label>
+                          <label className="checkbox-inline" htmlFor={`q-analysis-${index}`}>
+                            <input
+                              id={`q-analysis-${index}`}
+                              type="checkbox"
+                              checked={Boolean(question.includeInAnalysis)}
+                              onChange={(event) =>
+                                onEditorQuestionChange(index, 'includeInAnalysis', event.target.checked)
+                              }
+                            />
+                            Inkluder i analyse
+                          </label>
+                          {question.includeInAnalysis ? (
+                            <label className="field-block analysis-label-field" htmlFor={`q-analysis-label-${index}`}>
+                              <span>Kort tekst i historikk</span>
+                              <input
+                                id={`q-analysis-label-${index}`}
+                                type="text"
+                                value={question.analysisLabel || ''}
+                                placeholder={question.label}
+                                onChange={(event) =>
+                                  onEditorQuestionChange(index, 'analysisLabel', event.target.value)
+                                }
+                              />
+                            </label>
+                          ) : null}
                         </>
                       ) : (
                         <>
@@ -2903,6 +3128,62 @@ function FormPage() {
                               </article>
                             )
                           })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {isHistoryView ? (
+              <div className="history-overview" id="history-section">
+                <h3>Historikk</h3>
+                {loadingSubmissions ? <p>Laster historikk...</p> : null}
+                {!loadingSubmissions && analysisQuestions.length === 0 ? (
+                  <p>Ingen spørsmål er merket med "Inkluder i analyse" ennå.</p>
+                ) : null}
+                {!loadingSubmissions && analysisQuestions.length > 0 && historyRows.length === 0 ? (
+                  <p>Ingen innsendinger enda.</p>
+                ) : null}
+                {!loadingSubmissions && analysisQuestions.length > 0 && historyRows.length > 0 ? (
+                  <div className="history-location-list">
+                    {historyRows.map((row) => (
+                      <section key={row.location} className="history-location-group">
+                        <h4>{row.location}</h4>
+                        <div className="history-table-wrap">
+                          <table className="history-table">
+                            <thead>
+                              <tr>
+                                <th>Spørsmål</th>
+                                {row.items.map((submission, index) => (
+                                  <th key={`${row.location}-${submission.id}`}>
+                                    <div className="history-cell-meta">
+                                      <strong>{index === 0 ? 'Nyeste' : `${index + 1}`}</strong>
+                                      <small>{getDatePart(submission.submittedAt)}</small>
+                                      <small>{getClockPart(submission.submittedAt)}</small>
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {analysisQuestions.map((question) => (
+                                <tr key={`${row.location}-${question.id}`}>
+                                  <th scope="row">{question.analysisLabel || question.label}</th>
+                                  {row.items.map((submission) => {
+                                    const values = getHistoryAnswerValues(submission, question)
+
+                                    return (
+                                      <td key={`${submission.id}-${question.id}`} className="history-cell">
+                                        {values.length > 0 ? values.join(' | ') : '-'}
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       </section>
                     ))}
