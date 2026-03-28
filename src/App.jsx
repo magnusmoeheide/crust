@@ -305,6 +305,10 @@ function App() {
         <Route path="/skjema" element={withPageLoader(<Forms />)} />
         <Route path="/skjema/:formSlug" element={withPageLoader(<FormPage />)} />
         <Route
+          path="/skjema/:formSlug/kvittering/:receiptToken"
+          element={withPageLoader(<FormPage />)}
+        />
+        <Route
           path="/skjema/:formSlug/submissions"
           element={withPageLoader(<FormPage />)}
         />

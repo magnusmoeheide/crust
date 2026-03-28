@@ -25,6 +25,14 @@ service firebase.storage {
       allow read: if isCrustUser();
     }
 
+    match /forms/questions/{formId}/{fileName} {
+      allow write: if request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && isCrustUser();
+      allow read: if true;
+    }
+
     match /publications/images/{fileName} {
       allow write: if request.resource != null
         && request.resource.size < 10 * 1024 * 1024

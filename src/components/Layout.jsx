@@ -19,6 +19,9 @@ const LOGO_CACHE_KEY = "crust-brand-logo-v1";
 
 function Layout() {
   const location = useLocation();
+  const isStandaloneFormPage =
+    /^\/skjema\/[^/]+$/.test(location.pathname) ||
+    /^\/skjema\/[^/]+\/kvittering\/[^/]+$/.test(location.pathname);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [logoSrc, setLogoSrc] = useState(() => {
     if (typeof window === "undefined") {
@@ -114,103 +117,109 @@ function Layout() {
 
   return (
     <div className="page">
-      <div className="rename-banner">
-        <img
-          className="rename-banner-logo"
-          src={tmLogo}
-          alt="Toastmasters logo"
-        />
-        <span>Toastmasters har byttet navn til Crust n' Trust</span>
-      </div>
-      <header className="site-header">
-        <div className="site-header-inner">
-          <Link to="/" className="brand">
-            <img className="brand-logo" src={logoSrc} alt="Crust logo" />
-          </Link>
-          <button
-            className="nav-toggle"
-            type="button"
-            aria-label="Åpne meny"
-            aria-expanded={isNavOpen}
-            onClick={() => setIsNavOpen((open) => !open)}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
-          <nav className={`site-nav ${isNavOpen ? "is-open" : ""}`}>
-            <Link to="/">
-              <FontAwesomeIcon className="nav-icon" icon={faHouse} />
-              <span className="nav-label">Hjem</span>
-            </Link>
-            <Link to="/om-oss">
-              <FontAwesomeIcon className="nav-icon" icon={faCircleInfo} />
-              <span className="nav-label">Om oss</span>
-            </Link>
-            <Link to="/plasseringer">
-              <FontAwesomeIcon className="nav-icon" icon={faLocationDot} />
-              <span className="nav-label">Finn en vogn</span>
-            </Link>
-            <Link to="/partnere">
-              <FontAwesomeIcon className="nav-icon" icon={faHandshake} />
-              <span className="nav-label">Partnere</span>
-            </Link>
-            <Link to="/omtale">
-              <FontAwesomeIcon className="nav-icon" icon={faNewspaper} />
-              <span className="nav-label">Omtale</span>
-            </Link>
-            <Link to="/event">
-              <FontAwesomeIcon className="nav-icon" icon={faCalendarCheck} />
-              <span className="nav-label">Event</span>
-            </Link>
-            <Link to="/kontakt">
-              <FontAwesomeIcon className="nav-icon" icon={faAddressBook} />
-              <span className="nav-label">Kontakt</span>
-            </Link>
-            <Link to="/jobb">
-              <FontAwesomeIcon className="nav-icon" icon={faUserPlus} />
-              <span className="nav-label">Søk jobb</span>
-            </Link>
-          </nav>
-        </div>
-      </header>
+      {!isStandaloneFormPage ? (
+        <>
+          <div className="rename-banner">
+            <img
+              className="rename-banner-logo"
+              src={tmLogo}
+              alt="Toastmasters logo"
+            />
+            <span>Toastmasters har byttet navn til Crust n' Trust</span>
+          </div>
+          <header className="site-header">
+            <div className="site-header-inner">
+              <Link to="/" className="brand">
+                <img className="brand-logo" src={logoSrc} alt="Crust logo" />
+              </Link>
+              <button
+                className="nav-toggle"
+                type="button"
+                aria-label="Åpne meny"
+                aria-expanded={isNavOpen}
+                onClick={() => setIsNavOpen((open) => !open)}
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+              <nav className={`site-nav ${isNavOpen ? "is-open" : ""}`}>
+                <Link to="/">
+                  <FontAwesomeIcon className="nav-icon" icon={faHouse} />
+                  <span className="nav-label">Hjem</span>
+                </Link>
+                <Link to="/om-oss">
+                  <FontAwesomeIcon className="nav-icon" icon={faCircleInfo} />
+                  <span className="nav-label">Om oss</span>
+                </Link>
+                <Link to="/plasseringer">
+                  <FontAwesomeIcon className="nav-icon" icon={faLocationDot} />
+                  <span className="nav-label">Finn en vogn</span>
+                </Link>
+                <Link to="/partnere">
+                  <FontAwesomeIcon className="nav-icon" icon={faHandshake} />
+                  <span className="nav-label">Partnere</span>
+                </Link>
+                <Link to="/omtale">
+                  <FontAwesomeIcon className="nav-icon" icon={faNewspaper} />
+                  <span className="nav-label">Omtale</span>
+                </Link>
+                <Link to="/event">
+                  <FontAwesomeIcon className="nav-icon" icon={faCalendarCheck} />
+                  <span className="nav-label">Event</span>
+                </Link>
+                <Link to="/kontakt">
+                  <FontAwesomeIcon className="nav-icon" icon={faAddressBook} />
+                  <span className="nav-label">Kontakt</span>
+                </Link>
+                <Link to="/jobb">
+                  <FontAwesomeIcon className="nav-icon" icon={faUserPlus} />
+                  <span className="nav-label">Søk jobb</span>
+                </Link>
+              </nav>
+            </div>
+          </header>
+        </>
+      ) : null}
 
-      <main className="page-main">
+      <main className={`page-main ${isStandaloneFormPage ? "is-standalone-form" : ""}`}>
         <Outlet />
       </main>
 
-      <footer className="site-footer">
-        <div className="site-footer-inner">
-          <div>
-            <strong>@2026 Crust n' Trust</strong>
-            <p>Ungdom på jobb!</p>
-          </div>
-          <div>
-            <strong>Adresse</strong>
-            <p>Sandakerveien 121</p>
-            <p>0484 Oslo</p>
-          </div>
-          <div>
-            <strong>Kontakt</strong>
-            <p>
-              <a mailto="hei@crust.no" href="mailto:hei@crust.no">
-                hei@crust.no
-              </a>
-            </p>
-            <p>+47 958 85 852</p>
-            <br />
-            <p className="footer-note">
-              *Søknader på tlf, sms eller mail kan dessverre ikke besvares.{" "}
+      {!isStandaloneFormPage ? (
+        <footer className="site-footer">
+          <div className="site-footer-inner">
+            <div>
+              <strong>@2026 Crust n' Trust</strong>
+              <p>Ungdom på jobb!</p>
+            </div>
+            <div>
+              <strong>Adresse</strong>
+              <p>Sandakerveien 121</p>
+              <p>0484 Oslo</p>
+            </div>
+            <div>
+              <strong>Kontakt</strong>
+              <p>
+                <a mailto="hei@crust.no" href="mailto:hei@crust.no">
+                  hei@crust.no
+                </a>
+              </p>
+              <p>+47 958 85 852</p>
               <br />
-              Benytt søknadsskjemaet på{" "}
-              <a href="/jobb">
-                <u>/jobb</u>
-              </a>
-              .
-            </p>
+              <p className="footer-note">
+                *Søknader på tlf, sms eller mail kan dessverre ikke besvares.{" "}
+                <br />
+                Benytt søknadsskjemaet på{" "}
+                <a href="/jobb">
+                  <u>/jobb</u>
+                </a>
+                .
+              </p>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      ) : null}
     </div>
   );
 }

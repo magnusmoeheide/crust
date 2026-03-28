@@ -6,6 +6,9 @@ export const defaultStengeskjema = {
   title: 'Stengeskjema',
   description:
     'Fyll ut sjekklisten etter stenging. Legg gjerne ved bilder fra området som ble stengt.',
+  includeSubmissionDateTime: false,
+  enableSelfDeclaration: false,
+  selfDeclarationText: '',
   updatedAt: null,
   questions: [
     {

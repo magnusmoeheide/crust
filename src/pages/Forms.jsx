@@ -216,10 +216,6 @@ function Forms() {
       <header className="forms-hero">
         <p className="eyebrow">Skjemaer</p>
         <h1>Velg skjema</h1>
-        <p className="lead">
-          Her kan alle fylle ut skjemaer. Admin kan i tillegg redigere skjema og
-          se innsendinger.
-        </p>
       </header>
 
       <section className="forms-grid" aria-live="polite">
@@ -232,7 +228,12 @@ function Forms() {
               <h2>{form.title || form.slug}</h2>
               <p>{form.description || "Ingen beskrivelse enda."}</p>
               <div className="form-card-actions">
-                <Link className="cta" to={`/skjema/${form.slug}`}>
+                <Link
+                  className="cta"
+                  to={`/skjema/${form.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Åpne skjema
                 </Link>
                 {isAdmin ? (
@@ -246,9 +247,6 @@ function Forms() {
                     <Link className="ghost" to={`/skjema/${form.slug}/edit`}>
                       Edit form
                     </Link>
-                    <Link className="ghost" to={`/skjema/${form.slug}/edit`}>
-                      Manage form
-                    </Link>
                   </>
                 ) : null}
               </div>
@@ -256,10 +254,11 @@ function Forms() {
           ))}
       </section>
 
-      <section className={isAdmin ? "admin-box" : "admin-login-line"}>
-        {loading ? <p>Kontrollerer innlogging...</p> : null}
-        {error ? <p className="forms-error">{error}</p> : null}
-        {isAdmin ? (
+      {loading || error || isAdmin ? (
+        <section className={isAdmin ? "admin-box" : "admin-login-line"}>
+          {loading ? <p>Kontrollerer innlogging...</p> : null}
+          {error ? <p className="forms-error">{error}</p> : null}
+          {isAdmin ? (
           <>
             <div className="admin-session">
               <p>Innlogget som {user?.email}</p>
@@ -373,12 +372,9 @@ function Forms() {
               </div>
             </form>
           </>
-        ) : (
-          <p>
-            Admin-innlogging er flyttet til <Link to="/admin">/admin</Link>.
-          </p>
-        )}
-      </section>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
