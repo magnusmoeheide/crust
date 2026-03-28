@@ -1,4 +1,4 @@
-import { Route, Routes, Link, Navigate } from "react-router-dom";
+import { Route, Routes, Link, Navigate, useLocation } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -25,6 +25,7 @@ import pizza2_1600 from "./assets/optimized/pizza2-1600.jpeg";
 import prosess600 from "./assets/optimized/prosess-600.png";
 import prosess1200 from "./assets/optimized/prosess-1200.png";
 import "./App.css";
+import Varsling from "./pages/Varsling";
 
 const Apply = lazy(() => import("./pages/Apply"));
 const Locations = lazy(() => import("./pages/Locations"));
@@ -39,7 +40,6 @@ const VarigHadeland = lazy(() => import("./pages/VarigHadeland"));
 const Obos = lazy(() => import("./pages/Obos"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Publications = lazy(() => import("./pages/Publications"));
-const Varsling = lazy(() => import("./pages/Varsling"));
 
 function withPageLoader(element) {
   return (
@@ -49,11 +49,16 @@ function withPageLoader(element) {
   );
 }
 
+function RoutedFormPage() {
+  const location = useLocation();
+  return <FormPage key={location.pathname} />;
+}
+
 function Home() {
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     const timer = window.setTimeout(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }, 50);
     return () => window.clearTimeout(timer);
   }, []);
@@ -283,8 +288,10 @@ function Home() {
 }
 
 function App() {
+  const location = useLocation();
+
   return (
-    <Routes>
+    <Routes location={location} key={location.pathname}>
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/jobb" element={withPageLoader(<Apply />)} />
@@ -303,26 +310,30 @@ function App() {
         <Route path="/obos" element={withPageLoader(<Obos />)} />
         <Route path="/admin" element={withPageLoader(<Admin />)} />
         <Route path="/skjema" element={withPageLoader(<Forms />)} />
-        <Route path="/skjema/:formSlug" element={withPageLoader(<FormPage />)} />
+        <Route path="/skjema/:formSlug" element={withPageLoader(<RoutedFormPage />)} />
         <Route
           path="/skjema/:formSlug/kvittering/:receiptToken"
-          element={withPageLoader(<FormPage />)}
+          element={withPageLoader(<RoutedFormPage />)}
         />
         <Route
           path="/skjema/:formSlug/submissions"
-          element={withPageLoader(<FormPage />)}
+          element={withPageLoader(<RoutedFormPage />)}
         />
         <Route
           path="/skjema/:formSlug/review/:submissionId"
-          element={withPageLoader(<FormPage />)}
+          element={withPageLoader(<RoutedFormPage />)}
         />
         <Route
           path="/skjema/:formSlug/flagget"
-          element={withPageLoader(<FormPage />)}
+          element={withPageLoader(<RoutedFormPage />)}
         />
         <Route
           path="/skjema/:formSlug/analyse"
-          element={withPageLoader(<FormPage />)}
+          element={withPageLoader(<RoutedFormPage />)}
+        />
+        <Route
+          path="/skjema/:formSlug/leveringsliste"
+          element={withPageLoader(<RoutedFormPage />)}
         />
         <Route
           path="/skjema/:formSlug/historikk"
@@ -330,7 +341,7 @@ function App() {
         />
         <Route
           path="/skjema/:formSlug/edit"
-          element={withPageLoader(<FormPage />)}
+          element={withPageLoader(<RoutedFormPage />)}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

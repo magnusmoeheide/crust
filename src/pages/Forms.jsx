@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   collection,
   deleteDoc,
@@ -20,16 +20,20 @@ const defaultFormsBySlug = {
 function Forms() {
   const navigate = useNavigate();
   const [forms, setForms] = useState([defaultStengeskjema]);
+  const [pendingReviewCounts, setPendingReviewCounts] = useState({});
+  const [flaggedCounts, setFlaggedCounts] = useState({});
   const [loadingForms, setLoadingForms] = useState(true);
   const [formsError, setFormsError] = useState("");
   const [newFormSlug, setNewFormSlug] = useState("");
   const [newFormTitle, setNewFormTitle] = useState("");
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createState, setCreateState] = useState({
     creating: false,
     error: "",
   });
   const [deleteTargetSlug, setDeleteTargetSlug] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteState, setDeleteState] = useState({
     deleting: false,
     error: "",
@@ -85,6 +89,58 @@ function Forms() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isAdmin) {
+      setPendingReviewCounts({});
+      setFlaggedCounts({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPendingReviewCounts() {
+      try {
+        const snapshot = await getDocs(collection(db, "formSubmissions"));
+        const nextCounts = {};
+        const nextFlaggedCounts = {};
+
+        snapshot.forEach((item) => {
+          const data = item.data();
+          const formSlug = String(data?.formSlug || "").trim();
+          if (!formSlug) {
+            return;
+          }
+
+          if (Array.isArray(data?.flaggedAnswers) && data.flaggedAnswers.length > 0) {
+            nextFlaggedCounts[formSlug] = (nextFlaggedCounts[formSlug] || 0) + 1;
+          }
+
+          if (String(data?.status || "").trim().toLowerCase() === "reviewed") {
+            return;
+          }
+
+          nextCounts[formSlug] = (nextCounts[formSlug] || 0) + 1;
+        });
+
+        if (!cancelled) {
+          setPendingReviewCounts(nextCounts);
+          setFlaggedCounts(nextFlaggedCounts);
+        }
+      } catch {
+        if (!cancelled) {
+          setPendingReviewCounts({});
+          setFlaggedCounts({});
+        }
+      }
+    }
+
+    loadPendingReviewCounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
   const visibleForms = useMemo(
     () =>
       forms.filter(
@@ -93,6 +149,20 @@ function Forms() {
     [forms],
   );
   const deletableForms = useMemo(() => visibleForms, [visibleForms]);
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setCreateState({ creating: false, error: "" });
+  }
+
+  function closeDeleteModal() {
+    setIsDeleteModalOpen(false);
+    setDeleteState((previous) => ({
+      deleting: false,
+      error: "",
+      message: previous.message,
+    }));
+  }
 
   async function onCreateForm(event) {
     event.preventDefault();
@@ -146,6 +216,7 @@ function Forms() {
         updatedAt: serverTimestamp(),
       });
 
+      closeCreateModal();
       navigate(`/skjema/${normalizedSlug}`);
     } catch {
       setCreateState({
@@ -202,6 +273,7 @@ function Forms() {
         error: "",
         message: `Skjema "${targetSlug}" er slettet.`,
       });
+      setIsDeleteModalOpen(false);
     } catch {
       setDeleteState({
         deleting: false,
@@ -228,40 +300,46 @@ function Forms() {
               <h2>{form.title || form.slug}</h2>
               <p>{form.description || "Ingen beskrivelse enda."}</p>
               <div className="form-card-actions">
-                <Link
+                <a
                   className="cta"
-                  to={`/skjema/${form.slug}`}
+                  href={`/skjema/${form.slug}`}
                   target="_blank"
                   rel="noreferrer"
                 >
                   Åpne skjema
-                </Link>
+                </a>
                 {isAdmin ? (
                   <>
-                    <Link
+                    <a
                       className="ghost"
-                      to={`/skjema/${form.slug}/submissions`}
+                      href={`/skjema/${form.slug}/submissions`}
                     >
-                      Submissions
-                    </Link>
-                    <Link
+                      Submissions ({pendingReviewCounts[form.slug] || 0})
+                    </a>
+                    <a
                       className="ghost"
-                      to={`/skjema/${form.slug}/flagget`}
+                      href={`/skjema/${form.slug}/flagget`}
                     >
-                      Flagget
-                    </Link>
-                    <Link
+                      Flagget ({flaggedCounts[form.slug] || 0})
+                    </a>
+                    <a
                       className="ghost"
-                      to={`/skjema/${form.slug}/analyse`}
+                      href={`/skjema/${form.slug}/analyse`}
                     >
                       Analyse
-                    </Link>
-                    <Link
+                    </a>
+                    <a
                       className="ghost"
-                      to={`/skjema/${form.slug}/edit`}
+                      href={`/skjema/${form.slug}/leveringsliste`}
+                    >
+                      Leverings-/bestillingsliste
+                    </a>
+                    <a
+                      className="ghost"
+                      href={`/skjema/${form.slug}/edit`}
                     >
                       Edit form
-                    </Link>
+                    </a>
                   </>
                 ) : null}
               </div>
@@ -278,114 +356,190 @@ function Forms() {
             <div className="admin-session">
               <p>Innlogget som {user?.email}</p>
             </div>
-
-            <form className="admin-create-form" onSubmit={onCreateForm}>
-              <h3>Opprett nytt skjema</h3>
-              <label className="field-block" htmlFor="new-form-slug">
-                <span>URL-del (blir `/skjema/[url]`)</span>
-                <input
-                  id="new-form-slug"
-                  type="text"
-                  value={newFormSlug}
-                  onChange={(event) => setNewFormSlug(event.target.value)}
-                  placeholder="f.eks. ukesrapport"
-                  required
-                />
-              </label>
-
-              <label className="field-block" htmlFor="new-form-title">
-                <span>Tittel (valgfritt)</span>
-                <input
-                  id="new-form-title"
-                  type="text"
-                  value={newFormTitle}
-                  onChange={(event) => setNewFormTitle(event.target.value)}
-                  placeholder="f.eks. Ukesrapport"
-                />
-              </label>
-
-              {createState.error ? (
-                <p className="forms-error">{createState.error}</p>
-              ) : null}
-
+            <div className="forms-admin-toolbar">
               <button
-                type="submit"
+                type="button"
                 className="cta"
-                disabled={createState.creating}
+                onClick={() => setIsCreateModalOpen(true)}
               >
-                {createState.creating ? "Oppretter..." : "Opprett skjema"}
+                Opprett nytt skjema
               </button>
-            </form>
-
-            <form className="admin-delete-form" onSubmit={onDeleteForm}>
-              <h3>Slett skjema</h3>
-              <p className="delete-help">Sletting er permanent.</p>
-
-              <label className="field-block" htmlFor="delete-form-slug">
-                <span>Velg skjema</span>
-                <select
-                  id="delete-form-slug"
-                  value={deleteTargetSlug}
-                  onChange={(event) => setDeleteTargetSlug(event.target.value)}
-                  required
-                >
-                  <option value="">Velg skjema</option>
-                  {deletableForms.map((form) => (
-                    <option key={form.slug} value={form.slug}>
-                      {form.title || form.slug} ({form.slug})
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field-block" htmlFor="delete-form-confirmation">
-                <span>
-                  Bekreft ved å skrive{" "}
-                  <code>
-                    {deleteTargetSlug
-                      ? `SLETT ${deleteTargetSlug}`
-                      : "SLETT [slug]"}
-                  </code>
-                </span>
-                <input
-                  id="delete-form-confirmation"
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(event) => setDeleteConfirmText(event.target.value)}
-                  placeholder={
-                    deleteTargetSlug
-                      ? `SLETT ${deleteTargetSlug}`
-                      : "SLETT [slug]"
-                  }
-                  required
-                />
-              </label>
-
-              {deleteState.error ? (
-                <p className="forms-error">{deleteState.error}</p>
-              ) : null}
-              {deleteState.message ? (
-                <p className="forms-success">{deleteState.message}</p>
-              ) : null}
-
               <button
-                type="submit"
+                type="button"
                 className="ghost danger-button"
-                disabled={deleteState.deleting || deletableForms.length === 0}
+                onClick={() => setIsDeleteModalOpen(true)}
+                disabled={deletableForms.length === 0}
               >
-                {deleteState.deleting ? "Sletter..." : "Slett skjema"}
+                Slett skjema
               </button>
+              <button
+                type="button"
+                className="ghost admin-logout-mini"
+                onClick={signOutAdmin}
+              >
+                Logg ut
+              </button>
+            </div>
+            {deleteState.message ? (
+              <p className="forms-success">{deleteState.message}</p>
+            ) : null}
 
-              <div className="admin-logout-divider">
-                <button
-                  type="button"
-                  className="ghost admin-logout-mini"
-                  onClick={signOutAdmin}
+            {isCreateModalOpen ? (
+              <div
+                className="submission-modal-backdrop"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="create-form-modal-title"
+                onClick={closeCreateModal}
+              >
+                <div
+                  className="submission-modal forms-admin-modal"
+                  onClick={(event) => event.stopPropagation()}
                 >
-                  Logg ut
-                </button>
+                  <div className="submission-modal-header">
+                    <h4 id="create-form-modal-title">Opprett nytt skjema</h4>
+                    <button type="button" className="ghost" onClick={closeCreateModal}>
+                      Lukk
+                    </button>
+                  </div>
+                  <div className="submission-modal-content">
+                    <form className="admin-create-form" onSubmit={onCreateForm}>
+                      <label className="field-block" htmlFor="new-form-slug">
+                        <span>URL-del (blir `/skjema/[url]`)</span>
+                        <input
+                          id="new-form-slug"
+                          type="text"
+                          value={newFormSlug}
+                          onChange={(event) => setNewFormSlug(event.target.value)}
+                          placeholder="f.eks. ukesrapport"
+                          required
+                        />
+                      </label>
+
+                      <label className="field-block" htmlFor="new-form-title">
+                        <span>Tittel (valgfritt)</span>
+                        <input
+                          id="new-form-title"
+                          type="text"
+                          value={newFormTitle}
+                          onChange={(event) => setNewFormTitle(event.target.value)}
+                          placeholder="f.eks. Ukesrapport"
+                        />
+                      </label>
+
+                      {createState.error ? (
+                        <p className="forms-error">{createState.error}</p>
+                      ) : null}
+
+                      <div className="forms-admin-modal-actions">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={closeCreateModal}
+                        >
+                          Avbryt
+                        </button>
+                        <button
+                          type="submit"
+                          className="cta"
+                          disabled={createState.creating}
+                        >
+                          {createState.creating ? "Oppretter..." : "Opprett skjema"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
               </div>
-            </form>
+            ) : null}
+
+            {isDeleteModalOpen ? (
+              <div
+                className="submission-modal-backdrop"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-form-modal-title"
+                onClick={closeDeleteModal}
+              >
+                <div
+                  className="submission-modal forms-admin-modal"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="submission-modal-header">
+                    <h4 id="delete-form-modal-title">Slett skjema</h4>
+                    <button type="button" className="ghost" onClick={closeDeleteModal}>
+                      Lukk
+                    </button>
+                  </div>
+                  <div className="submission-modal-content">
+                    <form className="admin-delete-form" onSubmit={onDeleteForm}>
+                      <p className="delete-help">Sletting er permanent.</p>
+
+                      <label className="field-block" htmlFor="delete-form-slug">
+                        <span>Velg skjema</span>
+                        <select
+                          id="delete-form-slug"
+                          value={deleteTargetSlug}
+                          onChange={(event) => setDeleteTargetSlug(event.target.value)}
+                          required
+                        >
+                          <option value="">Velg skjema</option>
+                          {deletableForms.map((form) => (
+                            <option key={form.slug} value={form.slug}>
+                              {form.title || form.slug} ({form.slug})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="field-block" htmlFor="delete-form-confirmation">
+                        <span>
+                          Bekreft ved å skrive{" "}
+                          <code>
+                            {deleteTargetSlug
+                              ? `SLETT ${deleteTargetSlug}`
+                              : "SLETT [slug]"}
+                          </code>
+                        </span>
+                        <input
+                          id="delete-form-confirmation"
+                          type="text"
+                          value={deleteConfirmText}
+                          onChange={(event) => setDeleteConfirmText(event.target.value)}
+                          placeholder={
+                            deleteTargetSlug
+                              ? `SLETT ${deleteTargetSlug}`
+                              : "SLETT [slug]"
+                          }
+                          required
+                        />
+                      </label>
+
+                      {deleteState.error ? (
+                        <p className="forms-error">{deleteState.error}</p>
+                      ) : null}
+
+                      <div className="forms-admin-modal-actions">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={closeDeleteModal}
+                        >
+                          Avbryt
+                        </button>
+                        <button
+                          type="submit"
+                          className="ghost danger-button"
+                          disabled={deleteState.deleting || deletableForms.length === 0}
+                        >
+                          {deleteState.deleting ? "Sletter..." : "Slett skjema"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </>
           ) : null}
         </section>

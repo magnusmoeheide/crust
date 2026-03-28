@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useParams } from 'react-router-dom'
 import {
   collection,
   deleteDoc,
@@ -27,6 +27,7 @@ const SUBMISSION_TIME_KEY = 'Innsendt tid'
 const SELECT_DETAIL_SUFFIX = '__details'
 const SELF_DECLARATION_ACCEPTED_KEY = 'Egenerklæring bekreftet'
 const SELECT_OPTION_HISTORY_CATEGORIES = ['normal', 'orange', 'red']
+const RECEIPT_EDIT_WINDOW_MS = 30 * 60 * 1000
 const PUBLIC_FORM_COPY = {
   no: {
     languageLabel: 'Språk',
@@ -40,8 +41,14 @@ const PUBLIC_FORM_COPY = {
     receiptLead: 'Her er en kopi av akkurat denne innsendingen.',
     receiptTitlePrefix: 'Takk,',
     receiptTitleSuffix: 'er sendt inn',
+    submissionLabel: 'Innsending',
+    submittedLabel: 'Sendt inn',
+    loadingImage: 'Laster bilde...',
     loadingForm: 'Laster skjema...',
     loadingReceipt: 'Laster kvittering...',
+    editSubmission: 'Rediger',
+    editWindowExpired: 'Redigeringsfristen på 30 minutter er utløpt.',
+    editingSubmission: 'Du redigerer en tidligere innsending.',
     resetAnswers: 'Nullstill alle svar',
     resetAnswersConfirm: 'Nullstill alle svar i skjemaet?',
     sendForm: 'Send skjema',
@@ -75,8 +82,14 @@ const PUBLIC_FORM_COPY = {
     receiptLead: 'Here is a copy of this exact submission.',
     receiptTitlePrefix: 'Thanks,',
     receiptTitleSuffix: 'has been submitted',
+    submissionLabel: 'Submission',
+    submittedLabel: 'Submitted',
+    loadingImage: 'Loading image...',
     loadingForm: 'Loading form...',
     loadingReceipt: 'Loading receipt...',
+    editSubmission: 'Edit',
+    editWindowExpired: 'The 30-minute edit window has expired.',
+    editingSubmission: 'You are editing a previous submission.',
     resetAnswers: 'Reset all answers',
     resetAnswersConfirm: 'Reset all answers in the form?',
     sendForm: 'Submit form',
@@ -337,6 +350,11 @@ function normalizeQuestion(question, index) {
     includeInReview: type === 'section' ? false : Boolean(question?.includeInReview),
     reviewHelpText: type === 'section' ? '' : String(question?.reviewHelpText || '').trim(),
     analysisLabel: type === 'section' ? '' : String(question?.analysisLabel || '').trim(),
+    deliveryUnlimited: type === 'select' ? Boolean(question?.deliveryUnlimited) || !question?.deliveryMaxUnits : true,
+    deliveryMaxUnits:
+      type === 'select' && Number.isFinite(Number(question?.deliveryMaxUnits)) && Number(question?.deliveryMaxUnits) > 0
+        ? String(question.deliveryMaxUnits)
+        : '',
     helpTextColor: String(question?.helpTextColor || '').trim(),
     helpTextBold: Boolean(question?.helpTextBold),
     selectOptionDetails,
@@ -355,6 +373,22 @@ function formatTime(timestamp) {
     return timestamp.toLocaleString('nb-NO')
   }
   return '-'
+}
+
+function getReceiptEditState(submittedAtIso) {
+  const submittedAtMs = submittedAtIso ? Date.parse(submittedAtIso) : Number.NaN
+  if (!Number.isFinite(submittedAtMs)) {
+    return {
+      allowed: false,
+      remainingMs: 0,
+    }
+  }
+
+  const remainingMs = submittedAtMs + RECEIPT_EDIT_WINDOW_MS - Date.now()
+  return {
+    allowed: remainingMs > 0,
+    remainingMs: Math.max(0, remainingMs),
+  }
 }
 
 function toDateValue(timestamp) {
@@ -553,6 +587,10 @@ function getHistoryCellCategory(question, submission) {
     return ''
   }
 
+  if (hasAnalysisRefillAction(submission, question?.id)) {
+    return ''
+  }
+
   const selectedValue = String(submission?.answers?.[question.id] || '').trim()
   if (!selectedValue) {
     return ''
@@ -560,6 +598,211 @@ function getHistoryCellCategory(question, submission) {
 
   const historyCategory = getSelectOptionBehavior(question, selectedValue).historyCategory
   return historyCategory === 'orange' || historyCategory === 'red' ? historyCategory : ''
+}
+
+function getDeliveryMaxUnits(question) {
+  const parsed = Number.parseInt(question?.deliveryMaxUnits, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function getFirstNormalOption(question) {
+  if (question?.type !== 'select') {
+    return null
+  }
+
+  const options = Array.isArray(question.options) ? question.options : []
+  const firstNormalIndex = options.findIndex(
+    (option) => getSelectOptionBehavior(question, option).historyCategory === 'normal',
+  )
+
+  if (firstNormalIndex === -1) {
+    return null
+  }
+
+  return {
+    index: firstNormalIndex,
+    value: options[firstNormalIndex],
+  }
+}
+
+function getLocationQuestionDeliverySetting(location, formSlug, question) {
+  const options = Array.isArray(question?.options) ? question.options : []
+  const locationSettings =
+    location?.formSettings &&
+    typeof location.formSettings === 'object' &&
+    location.formSettings[formSlug] &&
+    typeof location.formSettings[formSlug] === 'object'
+      ? location.formSettings[formSlug]
+      : null
+  const savedSetting =
+    locationSettings &&
+    question?.id &&
+    locationSettings[question.id] &&
+    typeof locationSettings[question.id] === 'object'
+      ? locationSettings[question.id]
+      : null
+  const fallbackTarget = getFirstNormalOption(question)?.value || ''
+  const savedTargetValue =
+    savedSetting && typeof savedSetting.targetValue === 'string' && savedSetting.targetValue.trim()
+      ? savedSetting.targetValue
+      : ''
+  const fallbackMaxUnits = getDeliveryMaxUnits(question)
+
+  return {
+    targetValue: options.includes(savedTargetValue) ? savedTargetValue : fallbackTarget,
+    deliveryUnlimited:
+      savedSetting && typeof savedSetting.deliveryUnlimited === 'boolean'
+        ? savedSetting.deliveryUnlimited
+        : Boolean(question?.deliveryUnlimited) || !fallbackMaxUnits,
+    deliveryMaxUnits:
+      savedSetting && Number.isFinite(Number(savedSetting.deliveryMaxUnits)) && Number(savedSetting.deliveryMaxUnits) > 0
+        ? String(savedSetting.deliveryMaxUnits)
+        : fallbackMaxUnits
+          ? String(fallbackMaxUnits)
+          : '',
+  }
+}
+
+function getLocationDeliverySetting(locationName, locations = [], formSlug, question) {
+  const normalizedName = String(locationName || '').trim()
+  if (!normalizedName || !question?.id) {
+    return getLocationQuestionDeliverySetting(null, formSlug, question)
+  }
+
+  const matchingLocation = locations.find(
+    (location) => String(location.name || '').trim() === normalizedName,
+  )
+
+  return getLocationQuestionDeliverySetting(matchingLocation, formSlug, question)
+}
+
+function getAnalysisAction(submission, questionId) {
+  if (!submission || !questionId) {
+    return null
+  }
+
+  const actions =
+    submission.analysisActions && typeof submission.analysisActions === 'object'
+      ? submission.analysisActions
+      : null
+  const action =
+    actions && actions[questionId] && typeof actions[questionId] === 'object'
+      ? actions[questionId]
+      : null
+
+  if (!action) {
+    return null
+  }
+
+  const actionType = String(action.type || '').trim().toLowerCase()
+  return actionType === 'refill' || actionType === 'ordered' ? action : null
+}
+
+function hasAnalysisRefillAction(submission, questionId) {
+  return Boolean(getAnalysisAction(submission, questionId))
+}
+
+function getDeliveryRecommendation(question, submission, locationSetting = null) {
+  if (question?.type !== 'select' || !submission || hasAnalysisRefillAction(submission, question.id)) {
+    return null
+  }
+
+  const currentValue = String(submission.answers?.[question.id] || '').trim()
+  if (!currentValue) {
+    return null
+  }
+
+  const currentCategory = getSelectOptionBehavior(question, currentValue).historyCategory
+  if (currentCategory !== 'orange' && currentCategory !== 'red') {
+    return null
+  }
+
+  const options = Array.isArray(question.options) ? question.options : []
+  const currentIndex = options.findIndex((option) => option === currentValue)
+  const fallbackTarget = getFirstNormalOption(question)
+  const targetValue = String(locationSetting?.targetValue || fallbackTarget?.value || '').trim()
+  const targetIndex = options.findIndex((option) => option === targetValue)
+
+  if (currentIndex === -1 || targetIndex === -1 || currentIndex >= targetIndex) {
+    return null
+  }
+
+  const maxUnits = getDeliveryMaxUnits(locationSetting || question)
+  const unlimited =
+    typeof locationSetting?.deliveryUnlimited === 'boolean'
+      ? locationSetting.deliveryUnlimited || !maxUnits
+      : Boolean(question?.deliveryUnlimited) || !maxUnits
+  let recommendedUnits = null
+
+  if (!unlimited && options.length > 1) {
+    const currentUnits = Math.floor((currentIndex * maxUnits) / (options.length - 1))
+    const targetUnits = Math.ceil((targetIndex * maxUnits) / (options.length - 1))
+    recommendedUnits = Math.max(0, targetUnits - currentUnits)
+  }
+
+  return {
+    questionId: question.id,
+    label: question.analysisLabel || question.label,
+    currentValue,
+    currentCategory,
+    targetValue,
+    maxUnits,
+    unlimited,
+    recommendedUnits,
+    isOrdered: hasAnalysisRefillAction(submission, question.id),
+    sourceEntries: [{ submissionId: submission.id, questionId: question.id }],
+  }
+}
+
+function getLocationCity(locationName, locations = []) {
+  const normalizedName = String(locationName || '').trim()
+  if (!normalizedName) {
+    return 'Ukjent by'
+  }
+
+  const matchingLocation = locations.find(
+    (location) => String(location.name || '').trim() === normalizedName,
+  )
+  const city = String(matchingLocation?.city || matchingLocation?.address || '').trim()
+
+  return city || 'Ukjent by'
+}
+
+function sortDeliveryCards(cards = []) {
+  return [...cards].sort((a, b) => {
+    const aCriticalUnits = a.products.reduce(
+      (sum, product) =>
+        sum +
+        (product.currentCategory === 'red' && typeof product.recommendedUnits === 'number'
+          ? product.recommendedUnits
+          : 0),
+      0,
+    )
+    const bCriticalUnits = b.products.reduce(
+      (sum, product) =>
+        sum +
+        (product.currentCategory === 'red' && typeof product.recommendedUnits === 'number'
+          ? product.recommendedUnits
+          : 0),
+      0,
+    )
+
+    if (bCriticalUnits !== aCriticalUnits) {
+      return bCriticalUnits - aCriticalUnits
+    }
+
+    if (b.knownTotalUnits !== a.knownTotalUnits) {
+      return b.knownTotalUnits - a.knownTotalUnits
+    }
+
+    const aCriticalCount = a.products.filter((product) => product.currentCategory === 'red').length
+    const bCriticalCount = b.products.filter((product) => product.currentCategory === 'red').length
+    if (bCriticalCount !== aCriticalCount) {
+      return bCriticalCount - aCriticalCount
+    }
+
+    return String(a.location || '').localeCompare(String(b.location || ''), 'nb')
+  })
 }
 
 function getSubmissionStatusLabel(status) {
@@ -571,6 +814,10 @@ function getSubmissionStatusLabel(status) {
     default:
       return status ? String(status) : 'Awaiting review'
   }
+}
+
+function getFlaggedStatusLabel(status) {
+  return String(status || '').trim().toLowerCase() === 'complete' ? 'Complete' : 'Open'
 }
 
 function getHistoryAnswerValues(submission, question) {
@@ -680,6 +927,8 @@ function createEditorQuestion(seed) {
     includeInReview: false,
     reviewHelpText: '',
     analysisLabel: '',
+    deliveryUnlimited: true,
+    deliveryMaxUnits: '',
     helpTextColor: '',
     helpTextBold: false,
     selectOptionDetails: {},
@@ -811,17 +1060,29 @@ function getSubmitErrorMessage(error) {
 function FormPage() {
   const { formSlug = STENGESKJEMA_ID, receiptToken = '', submissionId = '' } = useParams()
   const location = useLocation()
+  const editReceiptToken = useMemo(
+    () => new URLSearchParams(location.search).get('editReceipt')?.trim() || '',
+    [location.search],
+  )
   const activeFormSlug = String(formSlug || STENGESKJEMA_ID).trim().toLowerCase()
   const isDefaultForm = activeFormSlug === STENGESKJEMA_ID
   const isSubmissionsView = location.pathname.endsWith('/submissions')
   const isReviewView = location.pathname.includes('/review/')
   const isFlaggedView = location.pathname.endsWith('/flagget')
+  const isDeliveryView = location.pathname.endsWith('/leveringsliste')
   const isHistoryView =
     location.pathname.endsWith('/analyse') || location.pathname.endsWith('/historikk')
   const isEditPage = location.pathname.endsWith('/edit')
   const isReceiptPage = location.pathname.includes('/kvittering/')
   const isStandalonePublicForm =
-    !isSubmissionsView && !isEditPage && !isHistoryView && !isFlaggedView && !isReviewView
+    !isSubmissionsView &&
+    !isEditPage &&
+    !isHistoryView &&
+    !isFlaggedView &&
+    !isReviewView &&
+    !isDeliveryView
+  const isSubmissionEditMode = !isReceiptPage && Boolean(editReceiptToken) && isStandalonePublicForm
+  const activeReceiptLookupToken = isReceiptPage ? receiptToken : editReceiptToken
 
   const [formData, setFormData] = useState(defaultStengeskjema)
   const [formDocId, setFormDocId] = useState(STENGESKJEMA_ID)
@@ -872,6 +1133,11 @@ function FormPage() {
   const [reviewDraftComments, setReviewDraftComments] = useState({})
   const [reviewSubmissionState, setReviewSubmissionState] = useState({ saving: false, error: '' })
   const [historySubmissionLimit, setHistorySubmissionLimit] = useState('3')
+  const [historyDefaultState, setHistoryDefaultState] = useState({
+    saving: false,
+    error: '',
+    message: '',
+  })
   const [historyQuestionFilterOpen, setHistoryQuestionFilterOpen] = useState(false)
   const [historyShowAllQuestions, setHistoryShowAllQuestions] = useState(true)
   const [selectedHistoryQuestionIds, setSelectedHistoryQuestionIds] = useState([])
@@ -882,6 +1148,16 @@ function FormPage() {
   const [loadingReceipt, setLoadingReceipt] = useState(false)
   const [receiptError, setReceiptError] = useState('')
   const [receiptImageUrls, setReceiptImageUrls] = useState({})
+  const [flaggedImageUrls, setFlaggedImageUrls] = useState({})
+  const [flaggedReviewOpenId, setFlaggedReviewOpenId] = useState('')
+  const [flaggedActionDrafts, setFlaggedActionDrafts] = useState({})
+  const [flaggedActionState, setFlaggedActionState] = useState({})
+  const [flaggedCollapsedIds, setFlaggedCollapsedIds] = useState({})
+  const [analysisActionState, setAnalysisActionState] = useState({})
+  const [deliveryGroupByNeighborhood, setDeliveryGroupByNeighborhood] = useState(false)
+  const [deliveryGroupByProductPerCity, setDeliveryGroupByProductPerCity] = useState(false)
+  const [editorLocationSettings, setEditorLocationSettings] = useState({})
+  const [hydratedEditReceiptToken, setHydratedEditReceiptToken] = useState('')
 
   const { user, isAdmin, loading, error } = useAdminSession()
   const shouldTranslateToEnglish = displayLanguage === 'en' || isReviewView
@@ -1028,7 +1304,7 @@ function FormPage() {
   }, [submitState.error, submitState.message, submitState.submitting])
 
   useEffect(() => {
-    if ((!isStandalonePublicForm && !isReviewView) || isReceiptPage || loadingForm || !shouldTranslateToEnglish) {
+    if ((!isStandalonePublicForm && !isReviewView) || loadingForm || !shouldTranslateToEnglish) {
       setTranslationState({ loading: false, error: '' })
       return
     }
@@ -1084,7 +1360,6 @@ function FormPage() {
   }, [
     englishTranslations,
     formData,
-    isReceiptPage,
     isReviewView,
     isStandalonePublicForm,
     loadingForm,
@@ -1093,12 +1368,121 @@ function FormPage() {
   ])
 
   useEffect(() => {
+    if (!isSubmissionEditMode) {
+      setHydratedEditReceiptToken('')
+    }
+  }, [isSubmissionEditMode, editReceiptToken])
+
+  useEffect(() => {
     if (loadingForm) {
       setDraftReady(false)
       return
     }
 
     if (isReceiptPage) {
+      setDraftReady(true)
+      return
+    }
+
+    if (isSubmissionEditMode) {
+      if (!receiptSubmission || hydratedEditReceiptToken === editReceiptToken) {
+        setDraftReady(Boolean(receiptSubmission))
+        return
+      }
+
+      const receiptAnswers = receiptSubmission.answers || {}
+      const nextAnswers = formData.questions.reduce((accumulator, question) => {
+        if (isSectionQuestion(question)) {
+          return accumulator
+        }
+
+        const storedValue = receiptAnswers[question.id]
+        const normalizedValue = typeof storedValue !== 'undefined' ? String(storedValue || '') : ''
+
+        if (question.type === 'location') {
+          const matchesSavedLocation = availableLocations.some(
+            (location) => String(location.name || '').trim() === normalizedValue,
+          )
+          accumulator[question.id] = matchesSavedLocation ? normalizedValue : normalizedValue ? LOCATION_OTHER_VALUE : ''
+          return accumulator
+        }
+
+        accumulator[question.id] = normalizedValue
+        return accumulator
+      }, {})
+
+      const nextLocationOtherAnswers = formData.questions.reduce((accumulator, question) => {
+        if (isSectionQuestion(question) || question.type !== 'location') {
+          return accumulator
+        }
+
+        const storedValue = String(receiptAnswers[question.id] || '').trim()
+        if (!storedValue) {
+          return accumulator
+        }
+
+        const matchesSavedLocation = availableLocations.some(
+          (location) => String(location.name || '').trim() === storedValue,
+        )
+        if (!matchesSavedLocation) {
+          accumulator[question.id] = storedValue
+        }
+
+        return accumulator
+      }, {})
+
+      const nextSelectDetailAnswers = formData.questions.reduce((accumulator, question) => {
+        if (isSectionQuestion(question) || question.type !== 'select') {
+          return accumulator
+        }
+
+        const detailKey = getSelectDetailAnswerKey(question.id)
+        const storedValue = receiptAnswers[detailKey]
+        if (typeof storedValue !== 'undefined') {
+          accumulator[question.id] = String(storedValue || '')
+        }
+        return accumulator
+      }, {})
+
+      const nextSelectDetailPreviews = formData.questions.reduce((accumulator, question) => {
+        if (isSectionQuestion(question) || question.type !== 'select') {
+          return accumulator
+        }
+
+        const detailValue = String(receiptAnswers[getSelectDetailAnswerKey(question.id)] || '').trim()
+        if (isStorageImagePath(detailValue)) {
+          const previewUrl = receiptSubmission.imageUrls?.[detailValue] || receiptImageUrls[detailValue] || ''
+          if (previewUrl) {
+            accumulator[question.id] = previewUrl
+          }
+        }
+        return accumulator
+      }, {})
+
+      const nextCameraPreviews = formData.questions.reduce((accumulator, question) => {
+        if (isSectionQuestion(question) || question.type !== 'camera') {
+          return accumulator
+        }
+
+        const storedValue = String(receiptAnswers[question.id] || '').trim()
+        if (isStorageImagePath(storedValue)) {
+          const previewUrl = receiptSubmission.imageUrls?.[storedValue] || receiptImageUrls[storedValue] || ''
+          if (previewUrl) {
+            accumulator[question.id] = previewUrl
+          }
+        }
+        return accumulator
+      }, {})
+
+      setAnswers(nextAnswers)
+      setLocationOtherAnswers(nextLocationOtherAnswers)
+      setSelectDetailAnswers(nextSelectDetailAnswers)
+      setSelectDetailFiles({})
+      setSelectDetailPreviews(nextSelectDetailPreviews)
+      setCameraFiles({})
+      setCameraPreviews(nextCameraPreviews)
+      setSelfDeclarationAccepted(Boolean(receiptAnswers[SELF_DECLARATION_ACCEPTED_KEY]))
+      setHydratedEditReceiptToken(editReceiptToken)
       setDraftReady(true)
       return
     }
@@ -1147,16 +1531,30 @@ function FormPage() {
       Boolean(formData.enableSelfDeclaration) && Boolean(draft.selfDeclarationAccepted),
     )
     setDraftReady(true)
-  }, [activeFormSlug, formData.enableSelfDeclaration, formData.questions, isReceiptPage, loadingForm])
+  }, [
+    activeFormSlug,
+    availableLocations,
+    editReceiptToken,
+    formData.enableSelfDeclaration,
+    formData.questions,
+    hydratedEditReceiptToken,
+    isReceiptPage,
+    isSubmissionEditMode,
+    loadingForm,
+    receiptImageUrls,
+    receiptSubmission,
+  ])
 
   useEffect(() => {
     if (
       loadingForm ||
       !draftReady ||
+      isSubmissionEditMode ||
       isEditPage ||
       isSubmissionsView ||
       isReceiptPage ||
       isHistoryView ||
+      isDeliveryView ||
       isFlaggedView ||
       isReviewView
     ) {
@@ -1205,6 +1603,8 @@ function FormPage() {
     answers,
     draftReady,
     formData.questions,
+    isSubmissionEditMode,
+    isDeliveryView,
     isEditPage,
     isFlaggedView,
     isHistoryView,
@@ -1255,6 +1655,36 @@ function FormPage() {
   }, [])
 
   useEffect(() => {
+    if (availableLocations.length === 0 || editorQuestions.length === 0) {
+      return
+    }
+
+    setEditorLocationSettings((previous) => {
+      const next = {}
+
+      availableLocations.forEach((location) => {
+        next[location.id] = {}
+
+        editorQuestions.forEach((question) => {
+          if (question.type !== 'select') {
+            return
+          }
+
+          const existingSetting =
+            previous[location.id] && previous[location.id][question.id]
+              ? previous[location.id][question.id]
+              : null
+
+          next[location.id][question.id] =
+            existingSetting || getLocationQuestionDeliverySetting(location, activeFormSlug, question)
+        })
+      })
+
+      return next
+    })
+  }, [activeFormSlug, availableLocations, editorQuestions])
+
+  useEffect(() => {
     if (!isAdmin) {
       setSubmissions([])
       return
@@ -1300,7 +1730,7 @@ function FormPage() {
   }, [activeFormSlug, isAdmin])
 
   useEffect(() => {
-    if (!isReceiptPage || !receiptToken) {
+    if (!activeReceiptLookupToken) {
       setReceiptSubmission(null)
       setReceiptError('')
       setLoadingReceipt(false)
@@ -1314,7 +1744,7 @@ function FormPage() {
       setReceiptError('')
 
       try {
-        const snapshot = await getDoc(doc(db, 'formSubmissionReceipts', receiptToken))
+        const snapshot = await getDoc(doc(db, 'formSubmissionReceipts', activeReceiptLookupToken))
 
         if (!snapshot.exists()) {
           if (!cancelled) {
@@ -1353,7 +1783,7 @@ function FormPage() {
     return () => {
       cancelled = true
     }
-  }, [activeFormSlug, isReceiptPage, receiptToken])
+  }, [activeFormSlug, activeReceiptLookupToken])
 
   useEffect(() => {
     if (!receiptSubmission) {
@@ -1676,7 +2106,11 @@ function FormPage() {
       }
 
       if (question.type === 'select' && selectedBehavior.kind === 'camera' && answerValue) {
-        return !selectDetailFiles[question.id]
+        return (
+          !selectDetailFiles[question.id] &&
+          !String(selectDetailAnswers[question.id] || '').trim() &&
+          !String(selectDetailPreviews[question.id] || '').trim()
+        )
       }
 
       if (!question.required) {
@@ -1708,11 +2142,38 @@ function FormPage() {
       return
     }
 
+    if (isSubmissionEditMode) {
+      const editState = getReceiptEditState(receiptSubmission?.submittedAtIso)
+      if (!receiptSubmission?.submissionId) {
+        setSubmitState({
+          submitting: false,
+          message: '',
+          error: publicCopy.loadingReceipt,
+        })
+        return
+      }
+      if (!editState.allowed) {
+        setSubmitState({
+          submitting: false,
+          message: '',
+          error: publicCopy.editWindowExpired,
+        })
+        return
+      }
+    }
+
+    const receiptWindow = window.open('', '_blank')
     setSubmitState({ submitting: true, message: '', error: '' })
 
     try {
-      const submissionRef = doc(collection(db, 'formSubmissions'))
-      const receiptRef = doc(collection(db, 'formSubmissionReceipts'))
+      const submissionRef =
+        isSubmissionEditMode && receiptSubmission?.submissionId
+          ? doc(db, 'formSubmissions', receiptSubmission.submissionId)
+          : doc(collection(db, 'formSubmissions'))
+      const receiptRef =
+        isSubmissionEditMode && editReceiptToken
+          ? doc(db, 'formSubmissionReceipts', editReceiptToken)
+          : doc(collection(db, 'formSubmissionReceipts'))
       const imagePaths = []
       const receiptImageMap = {}
       const submissionAnswers = { ...answers }
@@ -1809,23 +2270,47 @@ function FormPage() {
         }),
       )
 
+      const allImagePaths = Array.from(
+        new Set(Object.values(submissionAnswers).filter((value) => isStorageImagePath(value))),
+      )
+      const mergedReceiptImageMap = allImagePaths.reduce((accumulator, path) => {
+        accumulator[path] =
+          receiptImageMap[path] ||
+          receiptSubmission?.imageUrls?.[path] ||
+          receiptImageUrls[path] ||
+          ''
+        return accumulator
+      }, {})
+
       const submitterEmail = getSubmissionEmail(submissionAnswers, formData.questions)
       const submittedAtIso = new Date().toISOString()
 
       let receiptTokenValue = ''
 
       try {
-        await setDoc(receiptRef, {
-          formSlug: activeFormSlug,
-          formTitle: formData.title || activeFormSlug,
-          submissionId: submissionRef.id,
-          submitterEmail,
-          submittedAtIso,
-          answers: submissionAnswers,
-          imagePaths,
-          imageUrls: receiptImageMap,
-          createdAt: serverTimestamp(),
-        })
+        await setDoc(
+          receiptRef,
+          {
+            formSlug: activeFormSlug,
+            formTitle: formData.title || activeFormSlug,
+            submissionId: submissionRef.id,
+            submitterEmail,
+            submittedAtIso: isSubmissionEditMode
+              ? receiptSubmission?.submittedAtIso || submittedAtIso
+              : submittedAtIso,
+            answers: submissionAnswers,
+            imagePaths: allImagePaths,
+            imageUrls: mergedReceiptImageMap,
+            ...(isSubmissionEditMode
+              ? {
+                  updatedAt: serverTimestamp(),
+                }
+              : {
+                  createdAt: serverTimestamp(),
+                }),
+          },
+          { merge: isSubmissionEditMode },
+        )
         receiptTokenValue = receiptRef.id
       } catch (receiptError) {
         console.error('Failed to create submission receipt', {
@@ -1835,19 +2320,37 @@ function FormPage() {
         })
       }
 
-      await setDoc(submissionRef, {
-        formId: formDocId,
-        formSlug: activeFormSlug,
-        formTitle: formData.title || activeFormSlug,
-        answers: submissionAnswers,
-        imagePaths,
-        ...(receiptTokenValue ? { receiptToken: receiptTokenValue } : {}),
-        submitterEmail,
-        status: 'awaiting review',
-        statusUpdatedBy: 'system',
-        statusUpdatedAt: serverTimestamp(),
-        submittedAt: serverTimestamp(),
-      })
+      await setDoc(
+        submissionRef,
+        {
+          formId: formDocId,
+          formSlug: activeFormSlug,
+          formTitle: formData.title || activeFormSlug,
+          answers: submissionAnswers,
+          imagePaths: allImagePaths,
+          ...(receiptTokenValue ? { receiptToken: receiptTokenValue } : {}),
+          submitterEmail,
+          status: 'awaiting review',
+          statusUpdatedBy: 'system',
+          statusUpdatedAt: serverTimestamp(),
+          ...(isSubmissionEditMode
+            ? {
+                updatedAt: serverTimestamp(),
+              }
+            : {
+                submittedAt: serverTimestamp(),
+              }),
+        },
+        { merge: isSubmissionEditMode },
+      )
+
+      if (receiptTokenValue) {
+        receiptWindow?.location.replace(
+          `http://crust.no/skjema/stengeskjema/kvittering/${receiptTokenValue}`,
+        )
+      } else {
+        receiptWindow?.close()
+      }
 
       const clearedAnswers = formData.questions.reduce((accumulator, question) => {
         if (isSectionQuestion(question)) {
@@ -1870,10 +2373,17 @@ function FormPage() {
       setSubmitState({
         submitting: false,
         message:
-          displayLanguage === 'en' ? 'Thanks! The form has been submitted.' : 'Takk! Skjemaet er sendt inn.',
+          displayLanguage === 'en'
+            ? isSubmissionEditMode
+              ? 'Thanks! Your changes have been saved.'
+              : 'Thanks! The form has been submitted.'
+            : isSubmissionEditMode
+              ? 'Takk! Endringene er lagret.'
+              : 'Takk! Skjemaet er sendt inn.',
         error: '',
       })
     } catch (error) {
+      receiptWindow?.close()
       console.error('Failed to submit form', {
         formSlug: activeFormSlug,
         error,
@@ -1962,6 +2472,8 @@ function FormPage() {
             type: value,
             required: value === 'section' ? false : question.required,
             includeInReview: value === 'section' ? false : question.includeInReview,
+            deliveryUnlimited: value === 'select' ? question.deliveryUnlimited : true,
+            deliveryMaxUnits: value === 'select' ? question.deliveryMaxUnits : '',
             imageUrl: question.imageUrl,
             imagePreviewUrl: question.imagePreviewUrl,
             imageFile: question.imageFile,
@@ -2068,6 +2580,30 @@ function FormPage() {
     )
   }
 
+  function getEditorLocationSetting(locationId, question) {
+    const existingSetting =
+      editorLocationSettings[locationId] && editorLocationSettings[locationId][question.id]
+        ? editorLocationSettings[locationId][question.id]
+        : null
+    const matchingLocation = availableLocations.find((location) => location.id === locationId) || null
+
+    return existingSetting || getLocationQuestionDeliverySetting(matchingLocation, activeFormSlug, question)
+  }
+
+  function onEditorLocationSettingChange(locationId, question, key, value) {
+    setEditorLocationSettings((previous) => ({
+      ...previous,
+      [locationId]: {
+        ...(previous[locationId] || {}),
+        [question.id]: {
+          ...getEditorLocationSetting(locationId, question),
+          ...(previous[locationId]?.[question.id] || {}),
+          [key]: value,
+        },
+      },
+    }))
+  }
+
   function addQuestion() {
     setEditorQuestions((previous) => [
       ...previous,
@@ -2095,6 +2631,8 @@ function FormPage() {
         imageUrl: '',
         imageZoom: 1,
         includeInAnalysis: false,
+        deliveryUnlimited: true,
+        deliveryMaxUnits: '',
         helpTextColor: '',
         helpTextBold: false,
         selectOptionDetails: {},
@@ -2147,6 +2685,9 @@ function FormPage() {
               messageColor:
                 typeof detail?.messageColor === 'string' ? detail.messageColor : '',
               messageBold: Boolean(detail?.messageBold),
+              historyCategory: SELECT_OPTION_HISTORY_CATEGORIES.includes(detail?.historyCategory)
+                ? detail.historyCategory
+                : 'normal',
             },
           ]),
         ),
@@ -2289,10 +2830,51 @@ function FormPage() {
         await setDoc(formRef, payload)
       }
 
+      const deliveryQuestions = preparedQuestions.filter((question) => question.type === 'select')
+      const nextLocations = await Promise.all(
+        availableLocations.map(async (location) => {
+          const nextFormSettings = deliveryQuestions.reduce((accumulator, question) => {
+            const currentSetting = getEditorLocationSetting(location.id, question)
+
+            accumulator[question.id] = {
+              targetValue: String(currentSetting.targetValue || '').trim(),
+              deliveryUnlimited: Boolean(currentSetting.deliveryUnlimited),
+              deliveryMaxUnits:
+                Number.parseInt(currentSetting.deliveryMaxUnits, 10) > 0
+                  ? Number.parseInt(currentSetting.deliveryMaxUnits, 10)
+                  : null,
+            }
+
+            return accumulator
+          }, {})
+
+          const mergedFormSettings = {
+            ...(location.formSettings && typeof location.formSettings === 'object' ? location.formSettings : {}),
+            [activeFormSlug]: nextFormSettings,
+          }
+
+          await setDoc(
+            doc(db, 'locations', location.id),
+            {
+              formSettings: mergedFormSettings,
+              updatedAt: serverTimestamp(),
+              updatedBy: user?.email || 'admin',
+            },
+            { merge: true },
+          )
+
+          return {
+            ...location,
+            formSettings: mergedFormSettings,
+          }
+        }),
+      )
+
       setFormData({
         ...formData,
         ...payload,
       })
+      setAvailableLocations(nextLocations)
       setEditorQuestions(preparedQuestions.map((question, index) => toEditorQuestion(question, index)))
       setSaveState({
         saving: false,
@@ -2406,7 +2988,7 @@ function FormPage() {
   }
 
   async function onDeleteSubmission(submissionId) {
-    const confirmed = window.confirm('Slette denne innsendingen permanent?')
+    const confirmed = window.confirm('Delete this submission permanently?')
     if (!confirmed) {
       return
     }
@@ -2429,7 +3011,7 @@ function FormPage() {
     } catch {
       setDeleteSubmissionState((previous) => ({
         ...previous,
-        [submissionId]: { deleting: false, error: 'Kunne ikke slette innsending.' },
+        [submissionId]: { deleting: false, error: 'Could not delete the submission.' },
       }))
     }
   }
@@ -2511,6 +3093,7 @@ function FormPage() {
           answerKey,
           label: getAnswerDisplayLabel(answerKey, selectedSubmission.answers, formData.questions),
           value: isStorageImagePath(value) ? String(value) : String(value || ''),
+          imageUrl: isStorageImagePath(value) ? String(selectedSubmissionImageUrls[value] || '') : '',
           comment: String(reviewDraftComments[answerKey] || '').trim(),
         }
       })
@@ -2549,6 +3132,300 @@ function FormPage() {
           error?.code === 'permission-denied'
             ? `Could not save the review${code}. Firestore rules do not allow this action.`
             : `Could not save the review${code}.`,
+      })
+    }
+  }
+
+  function onOpenFlaggedReview(submission) {
+    if (!submission?.id) {
+      return
+    }
+
+    setFlaggedReviewOpenId((previous) => (previous === submission.id ? '' : submission.id))
+    setFlaggedActionDrafts((previous) => ({
+      ...previous,
+      [submission.id]:
+        typeof previous[submission.id] === 'string'
+          ? previous[submission.id]
+          : String(submission.flaggedActionTaken || ''),
+    }))
+    setFlaggedActionState((previous) => ({
+      ...previous,
+      [submission.id]: {
+        saving: false,
+        error: '',
+        message: previous[submission.id]?.message || '',
+      },
+    }))
+  }
+
+  function onToggleFlaggedCollapsed(submissionId) {
+    if (!submissionId) {
+      return
+    }
+
+    setFlaggedCollapsedIds((previous) => ({
+      ...previous,
+      [submissionId]: !previous[submissionId],
+    }))
+  }
+
+  async function onCompleteFlaggedSubmission(submission) {
+    if (!submission?.id) {
+      return
+    }
+
+    const actionTaken = String(flaggedActionDrafts[submission.id] || '').trim()
+    if (!actionTaken) {
+      setFlaggedActionState((previous) => ({
+        ...previous,
+        [submission.id]: {
+          saving: false,
+          error: 'Beskriv hva som ble gjort før flagget settes til complete.',
+          message: '',
+        },
+      }))
+      return
+    }
+
+    setFlaggedActionState((previous) => ({
+      ...previous,
+      [submission.id]: {
+        saving: true,
+        error: '',
+        message: '',
+      },
+    }))
+
+    try {
+      await updateDoc(doc(db, 'formSubmissions', submission.id), {
+        flaggedStatus: 'complete',
+        flaggedActionTaken: actionTaken,
+        flaggedCompletedAt: serverTimestamp(),
+        flaggedCompletedBy: user?.email || 'admin',
+      })
+
+      setSubmissions((previous) =>
+        previous.map((item) =>
+          item.id === submission.id
+            ? {
+                ...item,
+                flaggedStatus: 'complete',
+                flaggedActionTaken: actionTaken,
+                flaggedCompletedAt: new Date(),
+                flaggedCompletedBy: user?.email || 'admin',
+              }
+            : item,
+        ),
+      )
+
+      setFlaggedActionState((previous) => ({
+        ...previous,
+        [submission.id]: {
+          saving: false,
+          error: '',
+          message: 'Flagget er satt til complete.',
+        },
+      }))
+      setFlaggedReviewOpenId('')
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      setFlaggedActionState((previous) => ({
+        ...previous,
+        [submission.id]: {
+          saving: false,
+          error:
+            error?.code === 'permission-denied'
+              ? `Kunne ikke oppdatere flagget${code}. Mangler tilgang i Firestore-regler.`
+              : `Kunne ikke oppdatere flagget${code}.`,
+          message: '',
+        },
+      }))
+    }
+  }
+
+  async function onSetAnalysisActionEntries(entries, nextType, labels) {
+    const normalizedEntries = Array.from(
+      new Map(
+        (Array.isArray(entries) ? entries : [])
+          .filter((entry) => entry?.submissionId && entry?.questionId)
+          .map((entry) => [`${entry.submissionId}:${entry.questionId}`, entry]),
+      ).values(),
+    )
+
+    if (normalizedEntries.length === 0) {
+      return
+    }
+
+    setAnalysisActionState((previous) => ({
+      ...previous,
+      ...Object.fromEntries(
+        normalizedEntries.map((entry) => [`${entry.submissionId}:${entry.questionId}`, { saving: true, error: '' }]),
+      ),
+    }))
+
+    try {
+      await Promise.all(
+        normalizedEntries.map(async (entry) => {
+          const submission = submissions.find((item) => item.id === entry.submissionId)
+          if (!submission) {
+            return
+          }
+
+          const nextAnalysisActions = {
+            ...(submission.analysisActions && typeof submission.analysisActions === 'object'
+              ? submission.analysisActions
+              : {}),
+          }
+
+          if (nextType) {
+            nextAnalysisActions[entry.questionId] = {
+              type: nextType,
+              markedAt: serverTimestamp(),
+              markedBy: user?.email || 'admin',
+            }
+          } else {
+            delete nextAnalysisActions[entry.questionId]
+          }
+
+          await updateDoc(doc(db, 'formSubmissions', entry.submissionId), {
+            analysisActions: nextAnalysisActions,
+          })
+        }),
+      )
+
+      setSubmissions((previous) =>
+        previous.map((item) => {
+          const matchingEntries = normalizedEntries.filter((entry) => entry.submissionId === item.id)
+          if (matchingEntries.length === 0) {
+            return item
+          }
+
+          const nextAnalysisActions = {
+            ...(item.analysisActions && typeof item.analysisActions === 'object'
+              ? item.analysisActions
+              : {}),
+          }
+
+          matchingEntries.forEach((entry) => {
+            if (nextType) {
+              nextAnalysisActions[entry.questionId] = {
+                type: nextType,
+                markedAt: new Date(),
+                markedBy: user?.email || 'admin',
+              }
+            } else {
+              delete nextAnalysisActions[entry.questionId]
+            }
+          })
+
+          return {
+            ...item,
+            analysisActions: nextAnalysisActions,
+          }
+        }),
+      )
+
+      setAnalysisActionState((previous) => ({
+        ...previous,
+        ...Object.fromEntries(
+          normalizedEntries.map((entry) => [`${entry.submissionId}:${entry.questionId}`, { saving: false, error: '' }]),
+        ),
+      }))
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      const errorMessage =
+        error?.code === 'permission-denied'
+          ? `${labels.permission}${code}.`
+          : `${labels.generic}${code}.`
+
+      setAnalysisActionState((previous) => ({
+        ...previous,
+        ...Object.fromEntries(
+          normalizedEntries.map((entry) => [
+            `${entry.submissionId}:${entry.questionId}`,
+            { saving: false, error: errorMessage },
+          ]),
+        ),
+      }))
+    }
+  }
+
+  async function onMarkAnalysisRefill(submission, question) {
+    return onSetAnalysisActionEntries(
+      [{ submissionId: submission?.id, questionId: question?.id }],
+      'refill',
+      {
+        permission: 'Kunne ikke lagre påfylling. Mangler tilgang i Firestore-regler',
+        generic: 'Kunne ikke lagre påfylling',
+      },
+    )
+  }
+
+  async function onResetAnalysisRefill(submission, question) {
+    return onSetAnalysisActionEntries(
+      [{ submissionId: submission?.id, questionId: question?.id }],
+      '',
+      {
+        permission: 'Kunne ikke nullstille påfylling. Mangler tilgang i Firestore-regler',
+        generic: 'Kunne ikke nullstille påfylling',
+      },
+    )
+  }
+
+  async function onMarkDeliveryOrdered(product) {
+    return onSetAnalysisActionEntries(product?.sourceEntries, 'ordered', {
+      permission: 'Kunne ikke markere som bestilt. Mangler tilgang i Firestore-regler',
+      generic: 'Kunne ikke markere som bestilt',
+    })
+  }
+
+  async function onResetDeliveryOrdered(product) {
+    return onSetAnalysisActionEntries(product?.sourceEntries, '', {
+      permission: 'Kunne ikke nullstille bestilling. Mangler tilgang i Firestore-regler',
+      generic: 'Kunne ikke nullstille bestilling',
+    })
+  }
+
+  async function onSaveHistoryDefault() {
+    const nextDefault = Math.max(1, Number.parseInt(historySubmissionLimit, 10) || 3)
+
+    setHistoryDefaultState({
+      saving: true,
+      error: '',
+      message: '',
+    })
+
+    try {
+      await setDoc(
+        doc(db, 'forms', formDocId || activeFormSlug),
+        {
+          slug: activeFormSlug,
+          analysisDefaultSubmissionLimit: nextDefault,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+
+      setFormData((previous) => ({
+        ...previous,
+        analysisDefaultSubmissionLimit: nextDefault,
+      }))
+      setHistorySubmissionLimit(String(nextDefault))
+      setHistoryDefaultState({
+        saving: false,
+        error: '',
+        message: 'Default lagret.',
+      })
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      setHistoryDefaultState({
+        saving: false,
+        error:
+          error?.code === 'permission-denied'
+            ? `Kunne ikke lagre default${code}. Mangler tilgang i Firestore-regler.`
+            : `Kunne ikke lagre default${code}.`,
+        message: '',
       })
     }
   }
@@ -2659,7 +3536,7 @@ function FormPage() {
                 className="ghost camera-upload-button"
                 onClick={() => document.getElementById(detailFileInputId)?.click()}
               >
-                {detailFile ? publicCopy.uploadNewPhoto : publicCopy.takePhoto}
+                {detailFile || detailPreview ? publicCopy.uploadNewPhoto : publicCopy.takePhoto}
               </button>
               <input
                 id={detailFileInputId}
@@ -2762,7 +3639,7 @@ function FormPage() {
             className="ghost camera-upload-button"
             onClick={() => document.getElementById(fileInputId)?.click()}
           >
-            {cameraFiles[question.id] ? publicCopy.uploadNewPhoto : publicCopy.takePhoto}
+            {cameraFiles[question.id] || cameraPreview ? publicCopy.uploadNewPhoto : publicCopy.takePhoto}
           </button>
           <input
             id={fileInputId}
@@ -2844,7 +3721,11 @@ function FormPage() {
       const hasValue = String(answers[question.id] || '').trim().length > 0
       const selectedBehavior = getSelectOptionBehavior(question, String(answers[question.id] || '').trim())
       if (selectedBehavior.kind === 'camera' && hasValue) {
-        return Boolean(selectDetailFiles[question.id])
+        return (
+          Boolean(selectDetailFiles[question.id]) ||
+          String(selectDetailAnswers[question.id] || '').trim().length > 0 ||
+          String(selectDetailPreviews[question.id] || '').trim().length > 0
+        )
       }
       if (selectedBehavior.kind !== 'input' || !hasValue) {
         return hasValue
@@ -2866,7 +3747,10 @@ function FormPage() {
     (question) => !isSectionQuestion(question) && question.type === 'location',
   )
   const isPublicFormReady =
-    !loadingForm && draftReady && (!hasLocationQuestions || !loadingLocations)
+    !loadingForm &&
+    draftReady &&
+    (!hasLocationQuestions || !loadingLocations) &&
+    (!isSubmissionEditMode || !loadingReceipt)
   const isReceiptReady = !loadingForm && !loadingReceipt
   const availableSubmissionDays = Array.from(
     new Set(submissions.map((submission) => getSubmissionDayKey(submission.submittedAt)).filter(Boolean)),
@@ -2874,8 +3758,43 @@ function FormPage() {
   const visibleSubmissions = selectedSubmissionDay
     ? submissions.filter((submission) => getSubmissionDayKey(submission.submittedAt) === selectedSubmissionDay)
     : submissions
-  const flaggedSubmissions = submissions.filter(
-    (submission) => Array.isArray(submission.flaggedAnswers) && submission.flaggedAnswers.length > 0,
+  const flaggedSubmissions = useMemo(
+    () =>
+      submissions.filter(
+        (submission) => Array.isArray(submission.flaggedAnswers) && submission.flaggedAnswers.length > 0,
+      ),
+    [submissions],
+  )
+  const flaggedImagePaths = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          flaggedSubmissions.flatMap((submission) =>
+            (submission.flaggedAnswers || [])
+              .map((item) => item?.value)
+              .filter((value) => isStorageImagePath(value)),
+          ),
+        ),
+      ),
+    [flaggedSubmissions],
+  )
+  const missingFlaggedImagePaths = useMemo(
+    () => flaggedImagePaths.filter((path) => !(path in flaggedImageUrls)),
+    [flaggedImagePaths, flaggedImageUrls],
+  )
+  const openFlaggedSubmissions = useMemo(
+    () =>
+      flaggedSubmissions.filter(
+        (submission) => String(submission.flaggedStatus || '').trim().toLowerCase() !== 'complete',
+      ),
+    [flaggedSubmissions],
+  )
+  const completedFlaggedSubmissions = useMemo(
+    () =>
+      flaggedSubmissions.filter(
+        (submission) => String(submission.flaggedStatus || '').trim().toLowerCase() === 'complete',
+      ),
+    [flaggedSubmissions],
   )
   const submissionsByLocation = visibleSubmissions
     .reduce((accumulator, submission) => {
@@ -2931,6 +3850,197 @@ function FormPage() {
       }
       return a.location.localeCompare(b.location, 'nb')
     })
+  const deliveryLocationNames = (() => {
+    const namesFromLocations = availableLocations
+      .map((location) => String(location.name || '').trim())
+      .filter(Boolean)
+    const namesFromHistory = historyRows.map((row) => row.location)
+    const seen = new Set()
+
+    return [...namesFromLocations, ...namesFromHistory].filter((name) => {
+      if (seen.has(name)) {
+        return false
+      }
+      seen.add(name)
+      return true
+    })
+  })()
+  const deliveryCards = deliveryLocationNames.map((locationName) => {
+    const matchingHistoryRow = historyRows.find((row) => row.location === locationName)
+    const latestSubmission = matchingHistoryRow?.items?.[0] || null
+    const products = latestSubmission
+      ? analysisQuestions
+          .map((question) =>
+            getDeliveryRecommendation(
+              question,
+              latestSubmission,
+              getLocationDeliverySetting(locationName, availableLocations, activeFormSlug, question),
+            ),
+          )
+          .filter(Boolean)
+      : []
+
+    return {
+      location: locationName,
+      city: getLocationCity(locationName, availableLocations),
+      submission: latestSubmission,
+      products,
+      knownTotalUnits: products.reduce(
+        (sum, product) =>
+          sum + (typeof product.recommendedUnits === 'number' ? product.recommendedUnits : 0),
+        0,
+      ),
+      hasUnlimitedProducts: products.some((product) => product.unlimited),
+    }
+  })
+  const groupedDeliveryCards = Array.from(
+    deliveryCards.reduce((accumulator, card) => {
+      const key = card.city
+      const existingGroup = accumulator.get(key) || {
+        location: key,
+        city: key,
+        locations: [],
+        submission: null,
+        productsMap: new Map(),
+        knownTotalUnits: 0,
+        hasUnlimitedProducts: false,
+      }
+
+      existingGroup.locations.push(card.location)
+      existingGroup.knownTotalUnits += card.knownTotalUnits
+      existingGroup.hasUnlimitedProducts =
+        existingGroup.hasUnlimitedProducts || card.hasUnlimitedProducts
+
+      if (
+        card.submission &&
+        (!existingGroup.submission ||
+          (card.submission.submittedAt?.seconds || 0) > (existingGroup.submission.submittedAt?.seconds || 0))
+      ) {
+        existingGroup.submission = card.submission
+      }
+
+      card.products.forEach((product) => {
+        const currentProduct = existingGroup.productsMap.get(product.questionId) || {
+          ...product,
+          locations: [],
+          recommendedUnits: 0,
+          hasUnlimitedEntries: false,
+          isOrdered: true,
+          sourceEntries: [],
+        }
+
+        currentProduct.locations.push(card.location)
+        if (typeof product.recommendedUnits === 'number') {
+          currentProduct.recommendedUnits += product.recommendedUnits
+        } else {
+          currentProduct.hasUnlimitedEntries = true
+        }
+        currentProduct.unlimited = currentProduct.hasUnlimitedEntries
+        currentProduct.isOrdered = currentProduct.isOrdered && Boolean(product.isOrdered)
+        currentProduct.sourceEntries = [
+          ...currentProduct.sourceEntries,
+          ...(Array.isArray(product.sourceEntries) ? product.sourceEntries : []),
+        ]
+        currentProduct.currentCategory =
+          currentProduct.currentCategory === 'red' || product.currentCategory === 'red'
+            ? 'red'
+            : 'orange'
+
+        existingGroup.productsMap.set(product.questionId, currentProduct)
+      })
+
+      accumulator.set(key, existingGroup)
+      return accumulator
+    }, new Map()),
+  ).map(([, group]) => ({
+    location: group.location,
+    city: group.city,
+    locations: group.locations.sort((a, b) => a.localeCompare(b, 'nb')),
+    submission: group.submission,
+    products: Array.from(group.productsMap.values()),
+    knownTotalUnits: group.knownTotalUnits,
+    hasUnlimitedProducts: group.hasUnlimitedProducts,
+  }))
+  const groupedDeliveryCardsByProduct = groupedDeliveryCards.flatMap((card) =>
+    card.products.map((product) => ({
+      location: card.location,
+      city: card.city,
+      locations: card.locations,
+      submission: card.submission,
+      products: [product],
+      knownTotalUnits: typeof product.recommendedUnits === 'number' ? product.recommendedUnits : 0,
+      hasUnlimitedProducts: Boolean(product.unlimited),
+    })),
+  )
+  const visibleDeliveryCards = sortDeliveryCards(
+    deliveryGroupByNeighborhood
+      ? deliveryGroupByProductPerCity
+        ? groupedDeliveryCardsByProduct
+        : groupedDeliveryCards
+      : deliveryCards,
+  )
+  const deliveryCardRows = deliveryGroupByNeighborhood
+    ? Array.from(
+        visibleDeliveryCards.reduce((accumulator, card) => {
+          const key = card.city || card.location
+          const existingRow = accumulator.get(key) || {
+            key,
+            label: key,
+            cards: [],
+          }
+
+          existingRow.cards.push(card)
+          accumulator.set(key, existingRow)
+          return accumulator
+        }, new Map()).values(),
+      )
+    : []
+  useEffect(() => {
+    if (!deliveryGroupByNeighborhood && deliveryGroupByProductPerCity) {
+      setDeliveryGroupByProductPerCity(false)
+    }
+  }, [deliveryGroupByNeighborhood, deliveryGroupByProductPerCity])
+
+  useEffect(() => {
+    const nextDefault = Math.max(1, Number.parseInt(formData.analysisDefaultSubmissionLimit, 10) || 3)
+    setHistorySubmissionLimit(String(nextDefault))
+  }, [formData.analysisDefaultSubmissionLimit])
+
+  useEffect(() => {
+    if (flaggedSubmissions.length === 0) {
+      setFlaggedImageUrls({})
+      return
+    }
+
+    if (missingFlaggedImagePaths.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    Promise.all(
+      missingFlaggedImagePaths.map(async (path) => {
+        try {
+          const url = await getDownloadURL(ref(storage, path))
+          return [path, url]
+        } catch {
+          return [path, '']
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) {
+        return
+      }
+
+      setFlaggedImageUrls((previous) => ({
+        ...previous,
+        ...Object.fromEntries(pairs),
+      }))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [flaggedSubmissions, missingFlaggedImagePaths])
   const visibleHistoryRows =
     historyShowAllLocations
       ? historyRows
@@ -2940,6 +4050,7 @@ function FormPage() {
     (_, index) => index,
   )
   const receiptAnswerEntries = getOrderedAnswerEntries(receiptSubmission?.answers || {}, formData.questions)
+  const receiptEditState = getReceiptEditState(receiptSubmission?.submittedAtIso)
   const heroEyebrow = isReceiptPage ? publicCopy.receiptEyebrow : publicCopy.formEyebrow
   const localizedFormTitle = translateText(formData.title)
   const localizedFormDescription = translateText(formData.description)
@@ -2950,7 +4061,12 @@ function FormPage() {
     ? publicCopy.receiptLead
     : localizedFormDescription
   const showPublicFacingHeader =
-    !isSubmissionsView && !isEditPage && !isHistoryView && !isFlaggedView && !isReviewView
+    !isSubmissionsView &&
+    !isEditPage &&
+    !isHistoryView &&
+    !isFlaggedView &&
+    !isReviewView &&
+    !isDeliveryView
 
   useEffect(() => {
     const validLocations = new Set(historyRows.map((row) => row.location))
@@ -2961,29 +4077,208 @@ function FormPage() {
 
   let publicQuestionOrder = 0
 
+  function renderFlaggedSubmissionCard(submission, options = {}) {
+    const flaggedState = flaggedActionState[submission.id] || {
+      saving: false,
+      error: '',
+      message: '',
+    }
+    const isComplete = String(submission.flaggedStatus || '').trim().toLowerCase() === 'complete'
+    const isReviewOpen = flaggedReviewOpenId === submission.id
+    const isCollapsed = Boolean(flaggedCollapsedIds[submission.id])
+    const isCollapsible = Boolean(options.collapsible)
+
+    return (
+      <article key={submission.id} className="response-card flagged-submission-card">
+        {isCollapsible ? (
+          <button
+            type="button"
+            className="ghost flagged-collapse-toggle"
+            onClick={() => onToggleFlaggedCollapsed(submission.id)}
+            aria-expanded={!isCollapsed}
+          >
+            <span>
+              {getSubmissionLocation(submission.answers, formData.questions)} |{' '}
+              {getSubmissionName(submission.answers, formData.questions)}
+            </span>
+            <span>{isCollapsed ? 'Vis ferdig vurdering' : 'Skjul ferdig vurdering'}</span>
+          </button>
+        ) : null}
+        {!isCollapsed ? (
+          <div className="flagged-panel-grid">
+            <section className="flagged-panel flagged-info-panel">
+              <h4>Info</h4>
+              <div className="flagged-submission-meta">
+                <p>
+                  <strong>Vogn:</strong> {getSubmissionLocation(submission.answers, formData.questions)}
+                </p>
+                <p>
+                  <strong>Navn:</strong> {getSubmissionName(submission.answers, formData.questions)}
+                </p>
+                <p>
+                  <strong>Lokasjon:</strong> {getSubmissionPlace(submission.answers)}
+                </p>
+                <p>
+                  <strong>Sendt inn:</strong> {formatTime(submission.submittedAt)}
+                </p>
+                <p>
+                  <strong>Status:</strong>{' '}
+                  <span className={`flagged-status-badge ${isComplete ? 'is-complete' : 'is-open'}`}>
+                    {getFlaggedStatusLabel(submission.flaggedStatus)}
+                  </span>
+                </p>
+              </div>
+              <div className="flagged-action-topbar">
+                {submission.receiptToken ? (
+                  <a
+                    className="ghost"
+                    href={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Vis kvittering
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => onOpenFlaggedReview(submission)}
+                >
+                  Review
+                </button>
+              </div>
+              <h4>Action gjort</h4>
+              {submission.flaggedActionTaken ? (
+                <div className="flagged-action-summary">
+                  <p>
+                    <strong>Action gjort:</strong> {submission.flaggedActionTaken}
+                  </p>
+                  <p>
+                    <strong>Fullført av:</strong> {submission.flaggedCompletedBy || '-'}
+                  </p>
+                  <p>
+                    <strong>Fullført:</strong> {formatTime(submission.flaggedCompletedAt)}
+                  </p>
+                </div>
+              ) : (
+                <p className="review-answer-value">Ingen action registrert ennå.</p>
+              )}
+              {isReviewOpen ? (
+                <div className="flagged-action-box">
+                  <label
+                    className="field-block review-comment-field"
+                    htmlFor={`flagged-action-${submission.id}`}
+                  >
+                    <span>Beskriv action gjort</span>
+                    <textarea
+                      id={`flagged-action-${submission.id}`}
+                      rows={4}
+                      value={flaggedActionDrafts[submission.id] || ''}
+                      onChange={(event) =>
+                        setFlaggedActionDrafts((previous) => ({
+                          ...previous,
+                          [submission.id]: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="submission-table-actions">
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => onCompleteFlaggedSubmission(submission)}
+                      disabled={flaggedState.saving}
+                    >
+                      {flaggedState.saving ? 'Lagrer...' : 'Set complete'}
+                    </button>
+                  </div>
+                  {flaggedState.error ? <p className="forms-error">{flaggedState.error}</p> : null}
+                  {flaggedState.message ? <p className="forms-success">{flaggedState.message}</p> : null}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="flagged-panel flagged-content-panel">
+              <h4>Flagget spørsmål</h4>
+              <div className="flagged-answer-list">
+                {(submission.flaggedAnswers || []).map((item) => {
+                  const hasImagePath = isStorageImagePath(item.value)
+                  const imageUrl = hasImagePath
+                    ? String(item.imageUrl || flaggedImageUrls[item.value] || '')
+                    : undefined
+
+                  return (
+                    <article key={`${submission.id}-${item.answerKey}`} className="flagged-answer-row">
+                      <p className="review-answer-label">{item.label}</p>
+                      {item.comment ? (
+                        <p className="flagged-answer-comment">
+                          <strong>Kommentar:</strong> {item.comment}
+                        </p>
+                      ) : null}
+                      {hasImagePath ? (
+                        imageUrl ? (
+                          <img
+                            className="flagged-answer-image"
+                            src={imageUrl}
+                            alt={item.label}
+                            loading="lazy"
+                          />
+                        ) : typeof item.imageUrl === 'string' ||
+                          typeof flaggedImageUrls[item.value] !== 'undefined' ? (
+                          <p className="review-answer-value">Kunne ikke laste bilde.</p>
+                        ) : (
+                          <p className="review-answer-value">Laster bilde...</p>
+                        )
+                      ) : (
+                        <p className="review-answer-value">{String(item.value || '-')}</p>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </article>
+    )
+  }
+
   return (
     <div
       className={`forms-page stengeskjema-page ${isStandalonePublicForm ? 'public-form-page' : ''} ${
-        isHistoryView ? 'history-page' : ''
+        isHistoryView || isDeliveryView ? 'history-page' : ''
       }`}
     >
-      {isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView ? (
-        <Link className="admin-login-link" to="/skjema">
-          Tilbake til hovedmeny
-        </Link>
+      {isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView ? (
+        <form action="/skjema" method="get">
+          <button type="submit" className="admin-login-link">
+            Tilbake til hovedmeny
+          </button>
+        </form>
       ) : !isStandalonePublicForm &&
         !isSubmissionsView &&
         !isEditPage &&
         !isHistoryView &&
         !isFlaggedView &&
-        !isReviewView ? (
-        <Link className="admin-login-link" to="/skjema">
-          Tilbake til alle skjema
-        </Link>
+        !isReviewView &&
+        !isDeliveryView ? (
+        <form action="/skjema" method="get">
+          <button type="submit" className="admin-login-link">
+            Tilbake til alle skjema
+          </button>
+        </form>
       ) : null}
       {isReceiptPage && !isReceiptReady ? (
         <section className="form-entry">
           <p>{publicCopy.loadingReceipt}</p>
+        </section>
+      ) : isSubmissionEditMode && loadingReceipt ? (
+        <section className="form-entry">
+          <p>{publicCopy.loadingReceipt}</p>
+        </section>
+      ) : isSubmissionEditMode && receiptError ? (
+        <section className="form-entry">
+          <p className="forms-error">{receiptError}</p>
         </section>
       ) : !isSubmissionsView &&
         !isEditPage &&
@@ -3002,28 +4297,26 @@ function FormPage() {
               <p className="eyebrow">{heroEyebrow}</p>
               <h1>{heroTitle}</h1>
               <p className="lead">{heroLead}</p>
-              {!isReceiptPage ? (
-                <div className="public-form-language-bar">
-                  <span className="public-form-language-label">{publicCopy.languageLabel}</span>
-                  <div className="public-form-language-toggle" role="group" aria-label={publicCopy.languageLabel}>
-                    <button
-                      type="button"
-                      className={displayLanguage === 'no' ? 'is-active' : ''}
-                      onClick={() => setDisplayLanguage('no')}
-                    >
-                      {publicCopy.norwegian}
-                    </button>
-                    <button
-                      type="button"
-                      className={displayLanguage === 'en' ? 'is-active' : ''}
-                      onClick={() => setDisplayLanguage('en')}
-                    >
-                      {publicCopy.english}
-                    </button>
-                  </div>
+              <div className="public-form-language-bar">
+                <span className="public-form-language-label">{publicCopy.languageLabel}</span>
+                <div className="public-form-language-toggle" role="group" aria-label={publicCopy.languageLabel}>
+                  <button
+                    type="button"
+                    className={displayLanguage === 'no' ? 'is-active' : ''}
+                    onClick={() => setDisplayLanguage('no')}
+                  >
+                    {publicCopy.norwegian}
+                  </button>
+                  <button
+                    type="button"
+                    className={displayLanguage === 'en' ? 'is-active' : ''}
+                    onClick={() => setDisplayLanguage('en')}
+                  >
+                    {publicCopy.english}
+                  </button>
                 </div>
-              ) : null}
-              {!isReceiptPage && translationState.loading ? (
+              </div>
+              {translationState.loading ? (
                 <div className="public-form-translation-loader" role="status" aria-live="polite">
                   <div className="public-form-translation-spinner" aria-hidden="true">
                     <span />
@@ -3036,7 +4329,7 @@ function FormPage() {
                   </div>
                 </div>
               ) : null}
-              {!isReceiptPage && translationState.error ? (
+              {translationState.error ? (
                 <p className="public-form-language-status is-error">{translationState.error}</p>
               ) : null}
             </header>
@@ -3049,14 +4342,28 @@ function FormPage() {
                 <>
                   <div className="receipt-meta">
                     <p>
-                      <strong>Innsending:</strong> {receiptSubmission.submissionId || receiptSubmission.id}
+                      <strong>{publicCopy.submissionLabel}:</strong> {receiptSubmission.submissionId || receiptSubmission.id}
                     </p>
                     <p>
-                      <strong>Sendt inn:</strong>{' '}
+                      <strong>{publicCopy.submittedLabel}:</strong>{' '}
                       {receiptSubmission.submittedAtIso
                         ? new Date(receiptSubmission.submittedAtIso).toLocaleString('nb-NO')
                         : '-'}
                     </p>
+                    {receiptToken ? (
+                      receiptEditState.allowed ? (
+                        <p>
+                          <a
+                            className="ghost"
+                            href={`/skjema/${activeFormSlug}?editReceipt=${receiptToken}`}
+                          >
+                            {publicCopy.editSubmission}
+                          </a>
+                        </p>
+                      ) : (
+                        <p>{publicCopy.editWindowExpired}</p>
+                      )
+                    ) : null}
                   </div>
 
                   <div className="receipt-answer-list">
@@ -3068,22 +4375,26 @@ function FormPage() {
                       return (
                         <article key={key} className="receipt-answer-row">
                           <p className="receipt-answer-label">
-                            {getAnswerDisplayLabel(key, receiptSubmission.answers, formData.questions)}
+                            {translateText(
+                              getAnswerDisplayLabel(key, receiptSubmission.answers, formData.questions),
+                            )}
                           </p>
                           {imageUrl ? (
                             <img
                               className="receipt-answer-image"
                               src={imageUrl}
-                              alt={getAnswerDisplayLabel(
-                                key,
-                                receiptSubmission.answers,
-                                formData.questions,
+                              alt={translateText(
+                                getAnswerDisplayLabel(
+                                  key,
+                                  receiptSubmission.answers,
+                                  formData.questions,
+                                ),
                               )}
                               loading="lazy"
                             />
                           ) : (
                             <p className="receipt-answer-value">
-                              {isStorageImagePath(value) ? 'Laster bilde...' : String(value || '-')}
+                              {isStorageImagePath(value) ? publicCopy.loadingImage : String(value || '-')}
                             </p>
                           )}
                         </article>
@@ -3093,8 +4404,14 @@ function FormPage() {
                 </>
               ) : null}
             </section>
-          ) : !isSubmissionsView && !isEditPage && !isHistoryView && !isFlaggedView && !isReviewView ? (
+          ) : !isSubmissionsView &&
+            !isEditPage &&
+            !isHistoryView &&
+            !isFlaggedView &&
+            !isReviewView &&
+            !isDeliveryView ? (
             <section className="form-entry">
+              {isSubmissionEditMode ? <p className="field-help">{publicCopy.editingSubmission}</p> : null}
               <div className="form-entry-header">
                 <button type="button" className="ghost reset-form-button" onClick={resetAllAnswers}>
                   {publicCopy.resetAnswers}
@@ -3190,14 +4507,14 @@ function FormPage() {
         </>
       )}
 
-      {(isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView) && !isAdmin && !loading ? (
+      {(isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView || isDeliveryView) && !isAdmin && !loading ? (
         <section className="admin-login-line">
           <p className="forms-error">Kun admin har tilgang til denne siden.</p>
         </section>
       ) : null}
 
-      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView) ? (
-        <section className={isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView ? 'admin-edit-shell' : 'admin-box'}>
+      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView) ? (
+        <section className={isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView || isDeliveryView ? 'admin-edit-shell' : 'admin-box'}>
           {loading ? <p>Kontrollerer innlogging...</p> : null}
           {error ? <p className="forms-error">{error}</p> : null}
 
@@ -3271,208 +4588,46 @@ function FormPage() {
                   {editorQuestions.map((question, index) => (
                     <article key={`${question.id}-${index}`} className="editor-question-card">
                       <p>Spørsmål {index + 1}</p>
-                      <div className="editor-question-row">
-                        <label className="field-block" htmlFor={`q-label-${index}`}>
-                          <span>Tekst</span>
-                          <input
-                            id={`q-label-${index}`}
-                            type="text"
-                            value={question.label}
-                            onChange={(event) =>
-                              onEditorQuestionChange(index, 'label', event.target.value)
-                            }
-                          />
-                        </label>
-
-                        <label className="field-block" htmlFor={`q-type-${index}`}>
-                          <span>Type</span>
-                          <select
-                            id={`q-type-${index}`}
-                            value={question.type}
-                            onChange={(event) =>
-                              onEditorQuestionChange(index, 'type', event.target.value)
-                            }
+                      <div className="editor-question-layout">
+                        <div className="editor-question-content">
+                          <div
+                            className={`editor-question-row editor-question-main-row${
+                              isSectionQuestion(question) ? ' is-section-question' : ''
+                            }`}
                           >
-                            <option value="text">Tekst</option>
-                            <option value="textarea">Lang tekst</option>
-                            <option value="select">Valg</option>
-                            <option value="location">Lokasjon</option>
-                            <option value="number">Tall</option>
-                            <option value="date">Dato</option>
-                            <option value="camera">Ta bilde fra kamera</option>
-                            <option value="name">User's name</option>
-                            <option value="email">E-post</option>
-                            <option value="section">Kategori</option>
-                          </select>
-                        </label>
-                      </div>
+                            <label className="field-block" htmlFor={`q-label-${index}`}>
+                              <span>Tekst</span>
+                              <input
+                                id={`q-label-${index}`}
+                                type="text"
+                                value={question.label}
+                                onChange={(event) =>
+                                  onEditorQuestionChange(index, 'label', event.target.value)
+                                }
+                              />
+                            </label>
 
-                      {question.type === 'select' ? (
-                        <>
-                          <label className="field-block" htmlFor={`q-options-${index}`}>
-                            <span>Valg (kommaseparert)</span>
-                            <input
-                              id={`q-options-${index}`}
-                              type="text"
-                              value={question.optionsText || ''}
-                              onChange={(event) =>
-                                onEditorQuestionChange(index, 'options', event.target.value)
-                              }
-                            />
-                          </label>
-                          {(question.options || []).map((option) => {
-                            const optionDetail = getSelectOptionBehavior(question, option)
-                            const hasDetail = optionDetail.kind !== 'none'
-
-                            return (
-                              <div key={`${question.id}-${option}`} className="select-option-detail-row">
-                                <div className="select-option-detail-head">
-                                  <p className="select-option-detail-label">{option}</p>
-                                  <label
-                                    className="select-option-category-inline"
-                                    htmlFor={`q-select-category-${index}-${option}`}
-                                  >
-                                    <span>Kategori:</span>
-                                    <select
-                                      id={`q-select-category-${index}-${option}`}
-                                      value={optionDetail.historyCategory || 'normal'}
-                                      onChange={(event) =>
-                                        onEditorSelectOptionDetailChange(
-                                          index,
-                                          option,
-                                          'historyCategory',
-                                          event.target.value,
-                                        )
-                                      }
-                                    >
-                                      <option value="normal">Vanlig</option>
-                                      <option value="orange">Oransje</option>
-                                      <option value="red">Rød</option>
-                                    </select>
-                                  </label>
-                                  <label
-                                    className="checkbox-inline select-option-detail-toggle"
-                                    htmlFor={`q-select-detail-toggle-${index}-${option}`}
-                                  >
-                                    <input
-                                      id={`q-select-detail-toggle-${index}-${option}`}
-                                      type="checkbox"
-                                      checked={hasDetail}
-                                      onChange={(event) =>
-                                        onEditorSelectOptionDetailChange(
-                                          index,
-                                          option,
-                                          'kind',
-                                          event.target.checked ? 'input' : 'none',
-                                        )
-                                      }
-                                    />
-                                    Utdypning
-                                  </label>
-                                </div>
-                                {hasDetail ? (
-                                  <label
-                                    className="field-block"
-                                    htmlFor={`q-select-detail-kind-${index}-${option}`}
-                                  >
-                                    <span>Type</span>
-                                    <select
-                                      id={`q-select-detail-kind-${index}-${option}`}
-                                      value={optionDetail.kind}
-                                      onChange={(event) =>
-                                        onEditorSelectOptionDetailChange(
-                                          index,
-                                          option,
-                                          'kind',
-                                          event.target.value,
-                                        )
-                                      }
-                                    >
-                                      <option value="input">Inputfelt</option>
-                                      <option value="message">Beskjed</option>
-                                      <option value="camera">Bilde</option>
-                                    </select>
-                                  </label>
-                                ) : null}
-                                {hasDetail ? (
-                                  <label
-                                    className="field-block"
-                                    htmlFor={`q-select-detail-text-${index}-${option}`}
-                                  >
-                                    <span>
-                                      {optionDetail.kind === 'input'
-                                        ? 'Prompt'
-                                        : optionDetail.kind === 'camera'
-                                          ? 'Beskrivelse'
-                                          : 'Beskjed'}
-                                    </span>
-                                    <input
-                                      id={`q-select-detail-text-${index}-${option}`}
-                                      type="text"
-                                      value={optionDetail.text}
-                                      onChange={(event) =>
-                                        onEditorSelectOptionDetailChange(
-                                          index,
-                                          option,
-                                          'text',
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                  </label>
-                                ) : null}
-                                {hasDetail && optionDetail.kind === 'message' ? (
-                                  <div className="editor-question-row helptext-style-row">
-                                    <label
-                                      className="field-block"
-                                      htmlFor={`q-select-detail-color-${index}-${option}`}
-                                    >
-                                      <span>Farge</span>
-                                      <input
-                                        id={`q-select-detail-color-${index}-${option}`}
-                                        type="color"
-                                        value={optionDetail.messageColor || '#5f4c3f'}
-                                        onChange={(event) =>
-                                          onEditorSelectOptionDetailChange(
-                                            index,
-                                            option,
-                                            'messageColor',
-                                            event.target.value,
-                                          )
-                                        }
-                                      />
-                                    </label>
-
-                                    <label
-                                      className="checkbox-inline"
-                                      htmlFor={`q-select-detail-bold-${index}-${option}`}
-                                    >
-                                      <input
-                                        id={`q-select-detail-bold-${index}-${option}`}
-                                        type="checkbox"
-                                        checked={Boolean(optionDetail.messageBold)}
-                                        onChange={(event) =>
-                                          onEditorSelectOptionDetailChange(
-                                            index,
-                                            option,
-                                            'messageBold',
-                                            event.target.checked,
-                                          )
-                                        }
-                                      />
-                                      Beskjed i bold
-                                    </label>
-                                  </div>
-                                ) : null}
-                              </div>
-                            )
-                          })}
-                        </>
-                      ) : null}
-
-                      {!isSectionQuestion(question) ? (
-                        <>
-                          <div className="editor-question-row">
+                            <label className="field-block" htmlFor={`q-type-${index}`}>
+                              <span>Type</span>
+                              <select
+                                id={`q-type-${index}`}
+                                value={question.type}
+                                onChange={(event) =>
+                                  onEditorQuestionChange(index, 'type', event.target.value)
+                                }
+                              >
+                                <option value="text">Tekst</option>
+                                <option value="textarea">Lang tekst</option>
+                                <option value="select">Valg</option>
+                                <option value="location">Lokasjon</option>
+                                <option value="number">Tall</option>
+                                <option value="date">Dato</option>
+                                <option value="camera">Ta bilde fra kamera</option>
+                                <option value="name">User's name</option>
+                                <option value="email">E-post</option>
+                                <option value="section">Kategori</option>
+                              </select>
+                            </label>
                             <label className="field-block" htmlFor={`q-image-${index}`}>
                               <span>Bilde (valgfritt)</span>
                               <input
@@ -3497,7 +4652,9 @@ function FormPage() {
                             </label>
 
                             <label className="field-block" htmlFor={`q-placeholder-${index}`}>
-                              <span>Hjelpetekst</span>
+                              <span>
+                                {isSectionQuestion(question) ? 'Hjelpetekst under kategori' : 'Hjelpetekst'}
+                              </span>
                               <input
                                 id={`q-placeholder-${index}`}
                                 type="text"
@@ -3507,17 +4664,486 @@ function FormPage() {
                                 }
                               />
                             </label>
+
+                            {isSectionQuestion(question) ? (
+                              <>
+                                <label className="field-block" htmlFor={`q-helptext-color-${index}`}>
+                                  <span>Hjelpetekst-farge</span>
+                                  <input
+                                    id={`q-helptext-color-${index}`}
+                                    type="color"
+                                    value={question.helpTextColor || '#5f4c3f'}
+                                    onChange={(event) =>
+                                      onEditorQuestionChange(index, 'helpTextColor', event.target.value)
+                                    }
+                                  />
+                                </label>
+
+                                <label
+                                  className="checkbox-inline editor-main-row-checkbox"
+                                  htmlFor={`q-helptext-bold-${index}`}
+                                >
+                                  <input
+                                    id={`q-helptext-bold-${index}`}
+                                    type="checkbox"
+                                    checked={Boolean(question.helpTextBold)}
+                                    onChange={(event) =>
+                                      onEditorQuestionChange(index, 'helpTextBold', event.target.checked)
+                                    }
+                                  />
+                                  Hjelpetekst i bold
+                                </label>
+                              </>
+                            ) : null}
                           </div>
 
+                          {question.type === 'select' ? (
+                            <>
+                              <label className="field-block" htmlFor={`q-options-${index}`}>
+                                <span>Valg (kommaseparert)</span>
+                                <input
+                                  id={`q-options-${index}`}
+                                  type="text"
+                                  value={question.optionsText || ''}
+                                  onChange={(event) =>
+                                    onEditorQuestionChange(index, 'options', event.target.value)
+                                  }
+                                />
+                              </label>
+                              <div className="select-option-detail-list">
+                                {(question.options || []).map((option) => {
+                                  const optionDetail = getSelectOptionBehavior(question, option)
+                                  const hasDetail = optionDetail.kind !== 'none'
+
+                                  return (
+                                    <div key={`${question.id}-${option}`} className="select-option-detail-row">
+                                      <div className="select-option-detail-head">
+                                        <p className="select-option-detail-label">{option}</p>
+                                        <label
+                                          className="select-option-category-inline"
+                                          htmlFor={`q-select-category-${index}-${option}`}
+                                        >
+                                          <span>Kategori:</span>
+                                          <select
+                                            id={`q-select-category-${index}-${option}`}
+                                            value={optionDetail.historyCategory || 'normal'}
+                                            onChange={(event) =>
+                                              onEditorSelectOptionDetailChange(
+                                                index,
+                                                option,
+                                                'historyCategory',
+                                                event.target.value,
+                                              )
+                                            }
+                                          >
+                                            <option value="normal">Vanlig</option>
+                                            <option value="orange">Oransje</option>
+                                            <option value="red">Rød</option>
+                                          </select>
+                                        </label>
+                                        <label
+                                          className="checkbox-inline select-option-detail-toggle"
+                                          htmlFor={`q-select-detail-toggle-${index}-${option}`}
+                                        >
+                                          <input
+                                            id={`q-select-detail-toggle-${index}-${option}`}
+                                            type="checkbox"
+                                            checked={hasDetail}
+                                            onChange={(event) =>
+                                              onEditorSelectOptionDetailChange(
+                                                index,
+                                                option,
+                                                'kind',
+                                                event.target.checked ? 'input' : 'none',
+                                              )
+                                            }
+                                          />
+                                          Utdypning
+                                        </label>
+                                      </div>
+                                      {hasDetail ? (
+                                        <label
+                                          className="field-block"
+                                          htmlFor={`q-select-detail-kind-${index}-${option}`}
+                                        >
+                                          <span>Type</span>
+                                          <select
+                                            id={`q-select-detail-kind-${index}-${option}`}
+                                            value={optionDetail.kind}
+                                            onChange={(event) =>
+                                              onEditorSelectOptionDetailChange(
+                                                index,
+                                                option,
+                                                'kind',
+                                                event.target.value,
+                                              )
+                                            }
+                                          >
+                                            <option value="input">Inputfelt</option>
+                                            <option value="message">Beskjed</option>
+                                            <option value="camera">Bilde</option>
+                                          </select>
+                                        </label>
+                                      ) : null}
+                                      {hasDetail ? (
+                                        <label
+                                          className="field-block"
+                                          htmlFor={`q-select-detail-text-${index}-${option}`}
+                                        >
+                                          <span>
+                                            {optionDetail.kind === 'input'
+                                              ? 'Prompt'
+                                              : optionDetail.kind === 'camera'
+                                                ? 'Beskrivelse'
+                                                : 'Beskjed'}
+                                          </span>
+                                          <input
+                                            id={`q-select-detail-text-${index}-${option}`}
+                                            type="text"
+                                            value={optionDetail.text}
+                                            onChange={(event) =>
+                                              onEditorSelectOptionDetailChange(
+                                                index,
+                                                option,
+                                                'text',
+                                                event.target.value,
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                      ) : null}
+                                      {hasDetail && optionDetail.kind === 'message' ? (
+                                        <div className="editor-question-row helptext-style-row">
+                                          <label
+                                            className="field-block"
+                                            htmlFor={`q-select-detail-color-${index}-${option}`}
+                                          >
+                                            <span>Farge</span>
+                                            <input
+                                              id={`q-select-detail-color-${index}-${option}`}
+                                              type="color"
+                                              value={optionDetail.messageColor || '#5f4c3f'}
+                                              onChange={(event) =>
+                                                onEditorSelectOptionDetailChange(
+                                                  index,
+                                                  option,
+                                                  'messageColor',
+                                                  event.target.value,
+                                                )
+                                              }
+                                            />
+                                          </label>
+
+                                          <label
+                                            className="checkbox-inline"
+                                            htmlFor={`q-select-detail-bold-${index}-${option}`}
+                                          >
+                                            <input
+                                              id={`q-select-detail-bold-${index}-${option}`}
+                                              type="checkbox"
+                                              checked={Boolean(optionDetail.messageBold)}
+                                              onChange={(event) =>
+                                                onEditorSelectOptionDetailChange(
+                                                  index,
+                                                  option,
+                                                  'messageBold',
+                                                  event.target.checked,
+                                                )
+                                              }
+                                            />
+                                            Beskjed i bold
+                                          </label>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </>
+                          ) : null}
+
+                          {!isSectionQuestion(question) ? (
+                            <div className="editor-settings-table">
+                              <div className="editor-settings-toggle-row">
+                                <label
+                                  className="checkbox-inline editor-settings-toggle-cell"
+                                  htmlFor={`q-required-${index}`}
+                                >
+                                  <input
+                                    id={`q-required-${index}`}
+                                    type="checkbox"
+                                    checked={question.required}
+                                    onChange={(event) =>
+                                      onEditorQuestionChange(index, 'required', event.target.checked)
+                                    }
+                                  />
+                                  Obligatorisk
+                                </label>
+                                <label
+                                  className="checkbox-inline editor-settings-toggle-cell"
+                                  htmlFor={`q-analysis-${index}`}
+                                >
+                                  <input
+                                    id={`q-analysis-${index}`}
+                                    type="checkbox"
+                                    checked={Boolean(question.includeInAnalysis)}
+                                    onChange={(event) =>
+                                      onEditorQuestionChange(index, 'includeInAnalysis', event.target.checked)
+                                    }
+                                  />
+                                  Inkluder i analyse
+                                </label>
+                                <label
+                                  className="checkbox-inline editor-settings-toggle-cell"
+                                  htmlFor={`q-review-${index}`}
+                                >
+                                  <input
+                                    id={`q-review-${index}`}
+                                    type="checkbox"
+                                    checked={Boolean(question.includeInReview)}
+                                    onChange={(event) =>
+                                      onEditorQuestionChange(index, 'includeInReview', event.target.checked)
+                                    }
+                                  />
+                                  Skal vurderes
+                                </label>
+                              </div>
+                              <div className="editor-settings-detail-row">
+                                <div className="editor-settings-detail-cell editor-settings-detail-empty" />
+                                <div className="editor-settings-detail-cell">
+                                  {question.includeInAnalysis ? (
+                                    <div className="editor-settings-detail-stack">
+                                      <label
+                                        className="field-block analysis-label-field"
+                                        htmlFor={`q-analysis-label-${index}`}
+                                      >
+                                        <span>Kort tekst i analyse</span>
+                                        <input
+                                          id={`q-analysis-label-${index}`}
+                                          type="text"
+                                          value={question.analysisLabel || ''}
+                                          placeholder={question.label}
+                                          onChange={(event) =>
+                                            onEditorQuestionChange(index, 'analysisLabel', event.target.value)
+                                          }
+                                        />
+                                      </label>
+                                      {question.type === 'select' ? (
+                                        <div className="location-delivery-settings">
+                                          <p className="location-delivery-settings-title">
+                                            Lokasjonsinnstillinger
+                                          </p>
+                                          {availableLocations.length > 0 ? (
+                                            <div className="location-delivery-settings-list">
+                                              {availableLocations.map((location) => {
+                                                const locationSetting = getEditorLocationSetting(location.id, question)
+
+                                                return (
+                                                  <div
+                                                    key={`${question.id}-${location.id}`}
+                                                    className="location-delivery-setting-row"
+                                                  >
+                                                    <p className="location-delivery-setting-name">
+                                                      {location.name}
+                                                    </p>
+                                                    <label
+                                                      className="field-block"
+                                                      htmlFor={`q-location-target-${index}-${location.id}`}
+                                                    >
+                                                      <span>Mål</span>
+                                                      <select
+                                                        id={`q-location-target-${index}-${location.id}`}
+                                                        value={locationSetting.targetValue}
+                                                        onChange={(event) =>
+                                                          onEditorLocationSettingChange(
+                                                            location.id,
+                                                            question,
+                                                            'targetValue',
+                                                            event.target.value,
+                                                          )
+                                                        }
+                                                      >
+                                                        {(question.options || []).map((option) => (
+                                                          <option key={option} value={option}>
+                                                            {option}
+                                                          </option>
+                                                        ))}
+                                                      </select>
+                                                    </label>
+                                                    <label
+                                                      className="checkbox-inline"
+                                                      htmlFor={`q-location-unlimited-${index}-${location.id}`}
+                                                    >
+                                                      <input
+                                                        id={`q-location-unlimited-${index}-${location.id}`}
+                                                        type="checkbox"
+                                                        checked={Boolean(locationSetting.deliveryUnlimited)}
+                                                        onChange={(event) =>
+                                                          onEditorLocationSettingChange(
+                                                            location.id,
+                                                            question,
+                                                            'deliveryUnlimited',
+                                                            event.target.checked,
+                                                          )
+                                                        }
+                                                      />
+                                                      Ubegrenset
+                                                    </label>
+                                                    <label
+                                                      className="field-block delivery-max-field"
+                                                      htmlFor={`q-location-max-${index}-${location.id}`}
+                                                    >
+                                                      <span>Maks antall</span>
+                                                      <input
+                                                        id={`q-location-max-${index}-${location.id}`}
+                                                        type="number"
+                                                        min="1"
+                                                        inputMode="numeric"
+                                                        value={locationSetting.deliveryMaxUnits || ''}
+                                                        disabled={Boolean(locationSetting.deliveryUnlimited)}
+                                                        placeholder="f.eks. 40"
+                                                        onChange={(event) =>
+                                                          onEditorLocationSettingChange(
+                                                            location.id,
+                                                            question,
+                                                            'deliveryMaxUnits',
+                                                            event.target.value,
+                                                          )
+                                                        }
+                                                      />
+                                                    </label>
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          ) : (
+                                            <p className="field-help">
+                                              Opprett lokasjoner først for å sette mål og maks antall per lokasjon.
+                                            </p>
+                                          )}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="editor-settings-detail-cell">
+                                  {question.includeInReview ? (
+                                    <label
+                                      className="field-block"
+                                      htmlFor={`q-review-help-${index}`}
+                                    >
+                                      <span>Info til vurdering</span>
+                                      <input
+                                        id={`q-review-help-${index}`}
+                                        type="text"
+                                        value={question.reviewHelpText || ''}
+                                        onChange={(event) =>
+                                          onEditorQuestionChange(index, 'reviewHelpText', event.target.value)
+                                        }
+                                      />
+                                    </label>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="field-help">
+                              Kategorien vises som en overskrift mellom spørsmålsboksene i skjemaet.
+                            </p>
+                          )}
+
+                          <div className="question-action-row">
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => removeQuestion(index)}
+                              disabled={editorQuestions.length <= 1}
+                            >
+                              Fjern spørsmål
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => duplicateQuestion(index)}
+                            >
+                              Dupliser spørsmål
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => insertQuestionAfter(index)}
+                            >
+                              Legg til spørsmål under
+                            </button>
+                            <button
+                              type="button"
+                              className="cta save-question-button"
+                              onClick={() => onSaveForm(index)}
+                              disabled={saveState.saving}
+                            >
+                              {saveState.saving ? 'Lagrer...' : 'Lagre spørsmål'}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => moveQuestion(index, 'up')}
+                              disabled={index === 0}
+                            >
+                              Opp
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => moveQuestion(index, 'down')}
+                              disabled={index === editorQuestions.length - 1}
+                            >
+                              Ned
+                            </button>
+                            <label className="field-block" htmlFor={`q-move-target-${index}`}>
+                              <input
+                                id={`q-move-target-${index}`}
+                                type="number"
+                                min="1"
+                                max={editorQuestions.length}
+                                inputMode="numeric"
+                                placeholder={`Flytt til spørsmål (1-${editorQuestions.length})`}
+                                value={question.moveTarget || ''}
+                                onChange={(event) =>
+                                  onEditorQuestionChange(index, 'moveTarget', event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key !== 'Enter') {
+                                    return
+                                  }
+                                  event.preventDefault()
+                                  moveQuestionToNumber(index, question.moveTarget)
+                                }}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => moveQuestionToNumber(index, question.moveTarget)}
+                              disabled={!String(question.moveTarget || '').trim()}
+                            >
+                              Flytt
+                            </button>
+                          </div>
+                        </div>
+
+                        <aside className="editor-question-sidebar">
                           {question.imagePreviewUrl ? (
-                            <div className="question-image-preview">
+                            <div className="question-image-preview editor-question-preview-panel">
                               {renderQuestionImage(
                                 question.imagePreviewUrl,
                                 question.label,
                                 question.imageZoom,
                                 true,
                               )}
-                              <label className="field-block image-zoom-field" htmlFor={`q-image-zoom-${index}`}>
+                              <label
+                                className="field-block image-zoom-field"
+                                htmlFor={`q-image-zoom-${index}`}
+                              >
                                 <span>Bildezoom ({normalizeImageZoom(question.imageZoom).toFixed(2)}x)</span>
                                 <input
                                   id={`q-image-zoom-${index}`}
@@ -3540,258 +5166,15 @@ function FormPage() {
                               </button>
                             </div>
                           ) : (
-                            <p className="field-help">Ingen bilde valgt for dette spørsmålet.</p>
-                          )}
-
-                          <label className="checkbox-inline" htmlFor={`q-required-${index}`}>
-                            <input
-                              id={`q-required-${index}`}
-                              type="checkbox"
-                              checked={question.required}
-                              onChange={(event) =>
-                                onEditorQuestionChange(index, 'required', event.target.checked)
-                              }
-                            />
-                            Obligatorisk
-                          </label>
-                          <div className="editor-inline-setting-row">
-                            <label className="checkbox-inline" htmlFor={`q-analysis-${index}`}>
-                              <input
-                                id={`q-analysis-${index}`}
-                                type="checkbox"
-                                checked={Boolean(question.includeInAnalysis)}
-                                onChange={(event) =>
-                                  onEditorQuestionChange(index, 'includeInAnalysis', event.target.checked)
-                                }
-                              />
-                              Inkluder i analyse
-                            </label>
-                            {question.includeInAnalysis ? (
-                              <label
-                                className="field-block analysis-label-field inline-setting-field"
-                                htmlFor={`q-analysis-label-${index}`}
-                              >
-                                <span>Kort tekst i analyse</span>
-                                <input
-                                  id={`q-analysis-label-${index}`}
-                                  type="text"
-                                  value={question.analysisLabel || ''}
-                                  placeholder={question.label}
-                                  onChange={(event) =>
-                                    onEditorQuestionChange(index, 'analysisLabel', event.target.value)
-                                  }
-                                />
-                              </label>
-                            ) : null}
-                          </div>
-                          <div className="editor-inline-setting-row">
-                            <label className="checkbox-inline" htmlFor={`q-review-${index}`}>
-                              <input
-                                id={`q-review-${index}`}
-                                type="checkbox"
-                                checked={Boolean(question.includeInReview)}
-                                onChange={(event) =>
-                                  onEditorQuestionChange(index, 'includeInReview', event.target.checked)
-                                }
-                              />
-                              Skal vurderes
-                            </label>
-                            {question.includeInReview ? (
-                              <label
-                                className="field-block inline-setting-field"
-                                htmlFor={`q-review-help-${index}`}
-                              >
-                                <span>Info til vurdering</span>
-                                <input
-                                  id={`q-review-help-${index}`}
-                                  type="text"
-                                  value={question.reviewHelpText || ''}
-                                  onChange={(event) =>
-                                    onEditorQuestionChange(index, 'reviewHelpText', event.target.value)
-                                  }
-                                />
-                              </label>
-                            ) : null}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <label className="field-block" htmlFor={`q-image-${index}`}>
-                            <span>Bilde (valgfritt)</span>
-                            <input
-                              id={`q-image-${index}`}
-                              type="file"
-                              accept="image/*"
-                              onChange={async (event) => {
-                                const file = event.target.files?.[0] || null
-                                try {
-                                  await onEditorQuestionImageChange(index, file)
-                                } catch {
-                                  setSaveState({
-                                    saving: false,
-                                    message: '',
-                                    error: 'Kunne ikke lese bildet. Prøv en annen fil.',
-                                  })
-                                } finally {
-                                  event.target.value = ''
-                                }
-                              }}
-                            />
-                          </label>
-                          {question.imagePreviewUrl ? (
-                            <div className="question-image-preview">
-                              {renderQuestionImage(
-                                question.imagePreviewUrl,
-                                question.label,
-                                question.imageZoom,
-                                true,
-                              )}
-                              <label className="field-block image-zoom-field" htmlFor={`q-image-zoom-${index}`}>
-                                <span>Bildezoom ({normalizeImageZoom(question.imageZoom).toFixed(2)}x)</span>
-                                <input
-                                  id={`q-image-zoom-${index}`}
-                                  type="range"
-                                  min="0.5"
-                                  max="2.5"
-                                  step="0.05"
-                                  value={normalizeImageZoom(question.imageZoom)}
-                                  onChange={(event) =>
-                                    onEditorQuestionChange(index, 'imageZoom', event.target.value)
-                                  }
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                className="ghost"
-                                onClick={() => removeEditorQuestionImage(index)}
-                              >
-                                Fjern bilde
-                              </button>
+                            <div className="editor-question-preview-panel editor-question-preview-empty">
+                              <p className="field-help">
+                                {isSectionQuestion(question)
+                                  ? 'Ingen bilde valgt for denne kategorien.'
+                                  : 'Ingen bilde valgt for dette spørsmålet.'}
+                              </p>
                             </div>
-                          ) : (
-                            <p className="field-help">Ingen bilde valgt for denne kategorien.</p>
                           )}
-                          <label className="field-block" htmlFor={`q-placeholder-${index}`}>
-                            <span>Hjelpetekst under kategori</span>
-                            <input
-                              id={`q-placeholder-${index}`}
-                              type="text"
-                              value={question.placeholder || ''}
-                              onChange={(event) =>
-                                onEditorQuestionChange(index, 'placeholder', event.target.value)
-                              }
-                            />
-                          </label>
-                          <div className="editor-question-row helptext-style-row">
-                            <label className="field-block" htmlFor={`q-helptext-color-${index}`}>
-                              <span>Hjelpetekst-farge</span>
-                              <input
-                                id={`q-helptext-color-${index}`}
-                                type="color"
-                                value={question.helpTextColor || '#5f4c3f'}
-                                onChange={(event) =>
-                                  onEditorQuestionChange(index, 'helpTextColor', event.target.value)
-                                }
-                              />
-                            </label>
-
-                            <label className="checkbox-inline" htmlFor={`q-helptext-bold-${index}`}>
-                              <input
-                                id={`q-helptext-bold-${index}`}
-                                type="checkbox"
-                                checked={Boolean(question.helpTextBold)}
-                                onChange={(event) =>
-                                  onEditorQuestionChange(index, 'helpTextBold', event.target.checked)
-                                }
-                              />
-                              Hjelpetekst i bold
-                            </label>
-                          </div>
-                          <p className="field-help">
-                            Kategorien vises som en overskrift mellom spørsmålsboksene i skjemaet.
-                          </p>
-                        </>
-                      )}
-
-                      <div className="question-order-actions">
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => removeQuestion(index)}
-                          disabled={editorQuestions.length <= 1}
-                        >
-                          Fjern spørsmål
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => duplicateQuestion(index)}
-                        >
-                          Dupliser spørsmål
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => insertQuestionAfter(index)}
-                        >
-                          Legg til spørsmål under
-                        </button>
-                        <button
-                          type="button"
-                          className="cta save-question-button"
-                          onClick={() => onSaveForm(index)}
-                          disabled={saveState.saving}
-                        >
-                          {saveState.saving ? 'Lagrer...' : 'Lagre spørsmål'}
-                        </button>
-                      </div>
-                      <div className="question-move-direct">
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => moveQuestion(index, 'up')}
-                          disabled={index === 0}
-                        >
-                          Opp
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => moveQuestion(index, 'down')}
-                          disabled={index === editorQuestions.length - 1}
-                        >
-                          Ned
-                        </button>
-                        <label className="field-block" htmlFor={`q-move-target-${index}`}>
-                          <span>Flytt til spørsmål</span>
-                          <input
-                            id={`q-move-target-${index}`}
-                            type="number"
-                            min="1"
-                            max={editorQuestions.length}
-                            inputMode="numeric"
-                            placeholder={`1-${editorQuestions.length}`}
-                            value={question.moveTarget || ''}
-                            onChange={(event) =>
-                              onEditorQuestionChange(index, 'moveTarget', event.target.value)
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key !== 'Enter') {
-                                return
-                              }
-                              event.preventDefault()
-                              moveQuestionToNumber(index, question.moveTarget)
-                            }}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => moveQuestionToNumber(index, question.moveTarget)}
-                          disabled={!String(question.moveTarget || '').trim()}
-                        >
-                          Flytt
-                        </button>
+                        </aside>
                       </div>
                     </article>
                   ))}
@@ -3813,12 +5196,12 @@ function FormPage() {
 
             {isSubmissionsView ? (
               <div className="responses-box submissions-overview" id="submissions-section">
-                <h3>Innsendinger</h3>
-                {loadingSubmissions ? <p>Laster innsendinger...</p> : null}
+                <h3>Submissions</h3>
+                {loadingSubmissions ? <p>Loading submissions...</p> : null}
                 {!loadingSubmissions && availableSubmissionDays.length > 0 ? (
                   <div className="submissions-filter-bar">
                     <label className="field-block" htmlFor="submission-day-filter">
-                      <span>Dag</span>
+                      <span>Day</span>
                       <select
                         id="submission-day-filter"
                         value={selectedSubmissionDay}
@@ -3834,22 +5217,22 @@ function FormPage() {
                   </div>
                 ) : null}
                 {!loadingSubmissions && submissions.length === 0 ? (
-                  <p>Ingen innsendinger enda.</p>
+                  <p>No submissions yet.</p>
                 ) : null}
                 {!loadingSubmissions && submissions.length > 0 && visibleSubmissions.length === 0 ? (
-                  <p>Ingen innsendinger for valgt dag.</p>
+                  <p>No submissions for the selected day.</p>
                 ) : null}
                 {!loadingSubmissions && visibleSubmissions.length > 0 ? (
                   <div className="submissions-table-wrap">
                     <table className="submissions-table">
                       <thead>
                         <tr>
-                          <th>Sendt inn</th>
-                          <th>Lokasjon</th>
-                          <th>Navn</th>
-                          <th>Kvittering</th>
+                          <th>Submitted</th>
+                          <th>Location</th>
+                          <th>Name</th>
+                          <th>Receipt</th>
                           <th>Status</th>
-                          <th>Handlinger</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3874,43 +5257,51 @@ function FormPage() {
                               <td>{getSubmissionName(submission.answers, formData.questions)}</td>
                               <td>
                                 {submission.receiptToken ? (
-                                  <Link
+                                  <a
                                     className="ghost"
-                                    to={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
+                                    href={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
                                     target="_blank"
                                     rel="noreferrer"
                                   >
-                                    Vis kvittering
-                                  </Link>
+                                    View receipt
+                                  </a>
                                 ) : (
                                   '-'
                                 )}
                               </td>
                               <td>
-                                <span className={`submission-status-badge is-${String(submission.status || 'awaiting-review').replace(/\s+/g, '-').toLowerCase()}`}>
-                                  {getSubmissionStatusLabel(submission.status)}
-                                </span>
-                                {flaggedCount > 0 ? (
-                                  <small className="submission-flag-note">
-                                    {flaggedCount} flagget
-                                  </small>
-                                ) : null}
+                                <div className="submission-status-row">
+                                  <span
+                                    className={`submission-status-badge is-${String(
+                                      submission.status || 'awaiting-review',
+                                    )
+                                      .replace(/\s+/g, '-')
+                                      .toLowerCase()}`}
+                                  >
+                                    {getSubmissionStatusLabel(submission.status)}
+                                  </span>
+                                  {flaggedCount > 0 ? (
+                                    <span className="submission-status-badge is-flagged">
+                                      Flagged
+                                    </span>
+                                  ) : null}
+                                </div>
                               </td>
                               <td>
                                 <div className="submission-table-actions">
-                                  <Link
+                                  <a
                                     className="ghost"
-                                    to={`/skjema/${activeFormSlug}/review/${submission.id}`}
+                                    href={`/skjema/${activeFormSlug}/review/${submission.id}`}
                                   >
                                     Review
-                                  </Link>
+                                  </a>
                                   <button
                                     type="button"
                                     className="ghost danger-button"
                                     onClick={() => onDeleteSubmission(submission.id)}
                                     disabled={deleteState.deleting}
                                   >
-                                    {deleteState.deleting ? 'Sletter...' : 'Slett'}
+                                    {deleteState.deleting ? 'Deleting...' : 'Delete'}
                                   </button>
                                   {deleteState.error ? (
                                     <small className="forms-error">{deleteState.error}</small>
@@ -3935,52 +5326,15 @@ function FormPage() {
                 {!loadingSubmissions && flaggedSubmissions.length === 0 ? (
                   <p>Ingen flaggede svar ennå.</p>
                 ) : null}
+                {!loadingSubmissions && flaggedSubmissions.length > 0 && openFlaggedSubmissions.length === 0 ? (
+                  <p className="flagged-empty-note">Ingen venter oppfølging. Alle flaggede saker er ferdig vurdert.</p>
+                ) : null}
                 {!loadingSubmissions && flaggedSubmissions.length > 0 ? (
                   <div className="flagged-submission-list">
-                    {flaggedSubmissions.map((submission) => (
-                      <article key={submission.id} className="response-card flagged-submission-card">
-                        <div className="flagged-submission-header">
-                          <div>
-                            <h4>{getSubmissionLocation(submission.answers, formData.questions)}</h4>
-                            <p>
-                              {getSubmissionName(submission.answers, formData.questions)} |{' '}
-                              {formatTime(submission.submittedAt)}
-                            </p>
-                          </div>
-                          <div className="submission-table-actions">
-                            {submission.receiptToken ? (
-                              <Link
-                                className="ghost"
-                                to={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                Vis kvittering
-                              </Link>
-                            ) : null}
-                            <Link
-                              className="ghost"
-                              to={`/skjema/${activeFormSlug}/review/${submission.id}`}
-                            >
-                              Review
-                            </Link>
-                          </div>
-                        </div>
-                        <div className="flagged-answer-list">
-                          {(submission.flaggedAnswers || []).map((item) => (
-                            <p key={`${submission.id}-${item.answerKey}`}>
-                              <strong>{item.label}:</strong>{' '}
-                              {isStorageImagePath(item.value) ? 'Bilde vedlagt' : String(item.value || '-')}
-                              {item.comment ? (
-                                <small className="flagged-answer-comment">
-                                  Kommentar: {item.comment}
-                                </small>
-                              ) : null}
-                            </p>
-                          ))}
-                        </div>
-                      </article>
-                    ))}
+                    {openFlaggedSubmissions.map((submission) => renderFlaggedSubmissionCard(submission))}
+                    {completedFlaggedSubmissions.map((submission) =>
+                      renderFlaggedSubmissionCard(submission, { collapsible: true }),
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -3989,10 +5343,16 @@ function FormPage() {
             {isHistoryView ? (
               <div className="history-overview" id="history-section">
                 <div className="history-header">
-                  <h3>Analyse</h3>
+                  <div className="history-title-block">
+                    <h3>Analyse</h3>
+                    <p className="history-legend">
+                      <strong>Oransje:</strong> Bestill opp mer.{' '}
+                      <strong>Rød:</strong> Nesten helt tomt.
+                    </p>
+                  </div>
                   <div className="history-controls">
-                    <label className="field-block history-days-field" htmlFor="history-submission-limit">
-                      <span>Vis siste [x] innsendinger</span>
+                    <label className="field-block history-days-field history-days-inline" htmlFor="history-submission-limit">
+                      <span>Vis siste innsendinger</span>
                       <input
                         id="history-submission-limit"
                         type="number"
@@ -4002,6 +5362,14 @@ function FormPage() {
                         onChange={(event) => setHistorySubmissionLimit(event.target.value)}
                       />
                     </label>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={onSaveHistoryDefault}
+                      disabled={historyDefaultState.saving}
+                    >
+                      {historyDefaultState.saving ? 'Lagrer...' : 'Lagre default'}
+                    </button>
                     {historyRows.length > 0 ? (
                       <div className="history-filter-bar">
                         <button
@@ -4154,6 +5522,8 @@ function FormPage() {
                     ) : null}
                   </div>
                 </div>
+                {historyDefaultState.error ? <p className="forms-error">{historyDefaultState.error}</p> : null}
+                {historyDefaultState.message ? <p className="forms-success">{historyDefaultState.message}</p> : null}
                 {loadingSubmissions ? <p>Laster analyse...</p> : null}
                 {!loadingSubmissions && analysisQuestions.length === 0 ? (
                   <p>Ingen spørsmål er merket med "Inkluder i analyse" ennå.</p>
@@ -4214,6 +5584,27 @@ function FormPage() {
                                 const historyCellCategory = submission
                                   ? getHistoryCellCategory(question, submission)
                                   : ''
+                                const analysisStateKey =
+                                  submission?.id && question?.id
+                                    ? `${submission.id}:${question.id}`
+                                    : ''
+                                const analysisCellState = analysisStateKey
+                                  ? analysisActionState[analysisStateKey] || {
+                                      saving: false,
+                                      error: '',
+                                    }
+                                  : { saving: false, error: '' }
+                                const hasRefillAction = submission
+                                  ? hasAnalysisRefillAction(submission, question.id)
+                                  : false
+                                const showRefillAction =
+                                  Boolean(submission) &&
+                                  slotIndex === 0 &&
+                                  (
+                                    historyCellCategory === 'orange' ||
+                                    historyCellCategory === 'red' ||
+                                    hasRefillAction
+                                  )
 
                                 return (
                                   <td
@@ -4221,12 +5612,57 @@ function FormPage() {
                                     className={`history-cell ${
                                       slotIndex === 0 ? 'history-current-column' : ''
                                     } ${
-                                      historyCellCategory
-                                        ? `history-cell-${historyCellCategory}`
+                                      slotIndex === 0 && historyCellCategory === 'red'
+                                        ? 'history-current-column-red'
                                         : ''
                                     }`}
                                   >
-                                    {values.length > 0 ? values.join(' | ') : '-'}
+                                    <div className="history-cell-content">
+                                      {values.length > 0 ? (
+                                        <span
+                                          className={`history-cell-value ${
+                                            historyCellCategory
+                                              ? `history-cell-value-${historyCellCategory}`
+                                              : ''
+                                          }`}
+                                        >
+                                          {values.join(' | ')}
+                                        </span>
+                                      ) : (
+                                        <span className="history-empty-cell">-</span>
+                                      )}
+                                      {showRefillAction ? (
+                                        hasRefillAction ? (
+                                          <label
+                                            className="history-cell-checkbox-wrap"
+                                            aria-label="Nullstill påfylling"
+                                            title="Nullstill påfylling"
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              className="history-cell-checkbox"
+                                              checked
+                                              disabled={analysisCellState.saving}
+                                              onChange={() => onResetAnalysisRefill(submission, question)}
+                                            />
+                                          </label>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="ghost history-cell-action"
+                                            onClick={() => onMarkAnalysisRefill(submission, question)}
+                                            disabled={analysisCellState.saving}
+                                            aria-label="Marker påfylling"
+                                            title="Marker påfylling"
+                                          >
+                                            {analysisCellState.saving ? '...' : '+'}
+                                          </button>
+                                        )
+                                      ) : null}
+                                    </div>
+                                    {analysisCellState.error ? (
+                                      <p className="history-cell-error">{analysisCellState.error}</p>
+                                    ) : null}
                                   </td>
                                 )
                               }),
@@ -4252,6 +5688,306 @@ function FormPage() {
               </div>
             ) : null}
 
+            {isDeliveryView ? (
+              <div className="delivery-overview" id="delivery-section">
+                <div className="history-header">
+                  <div className="history-title-block">
+                    <h3>Leverings-/bestillingsliste</h3>
+                    <p className="history-legend">
+                      Basert på siste innsending per lokasjon og første normale nivå for hvert produkt.
+                    </p>
+                  </div>
+                  <div className="delivery-toggle-row">
+                    <label className="checkbox-inline delivery-group-toggle">
+                      <input
+                        type="checkbox"
+                        checked={deliveryGroupByNeighborhood}
+                        onChange={(event) => {
+                          const isChecked = event.target.checked
+                          setDeliveryGroupByNeighborhood(isChecked)
+                          if (!isChecked) {
+                            setDeliveryGroupByProductPerCity(false)
+                          }
+                        }}
+                      />
+                      Samle per by
+                    </label>
+                    <label className="checkbox-inline delivery-group-toggle">
+                      <input
+                        type="checkbox"
+                        checked={deliveryGroupByProductPerCity}
+                        onChange={(event) => {
+                          const isChecked = event.target.checked
+                          setDeliveryGroupByProductPerCity(isChecked)
+                          if (isChecked) {
+                            setDeliveryGroupByNeighborhood(true)
+                          }
+                        }}
+                      />
+                      Samle per produkt per by
+                    </label>
+                  </div>
+                </div>
+                {loadingSubmissions ? <p>Laster leveringsliste...</p> : null}
+                {!loadingSubmissions && analysisQuestions.length === 0 ? (
+                  <p>Ingen spørsmål er merket med "Inkluder i analyse" ennå.</p>
+                ) : null}
+                {!loadingSubmissions && analysisQuestions.length > 0 && historyRows.length === 0 ? (
+                  <p>Ingen innsendinger ennå.</p>
+                ) : null}
+                {!loadingSubmissions && analysisQuestions.length > 0 && historyRows.length > 0 ? (
+                  <>
+                    {deliveryGroupByNeighborhood ? (
+                      <div className="delivery-city-rows">
+                        {deliveryCardRows.map((row) => (
+                          <section key={row.key} className="delivery-city-row">
+                            <div className="delivery-city-label">
+                              <h4>{row.label}</h4>
+                            </div>
+                            <div className="delivery-city-cards-scroll">
+                              <div
+                                className={`delivery-city-cards${
+                                  deliveryGroupByProductPerCity ? '' : ' delivery-city-cards-fullwidth'
+                                }`}
+                              >
+                                {row.cards.map((card, cardIndex) => (
+                                  <article
+                                    key={`${row.key}-${cardIndex}-${card.products
+                                      .map((product) => product.questionId)
+                                      .join('-') || 'empty'}`}
+                                    className="response-card delivery-card"
+                                  >
+                                    <div className="delivery-card-header">
+                                      <div>
+                                        <p>
+                                          <strong>Sist sendt inn:</strong>{' '}
+                                          {formatTime(card.submission?.submittedAt)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    {card.products.length > 0 ? (
+                                      <div className="delivery-item-list delivery-item-list-horizontal">
+                                        {card.products.map((product) => (
+                                          <article
+                                            key={`${card.location}-${product.questionId}`}
+                                            className="delivery-item"
+                                          >
+                                            {(() => {
+                                              const sourceEntries = Array.isArray(product.sourceEntries)
+                                                ? product.sourceEntries
+                                                : []
+                                              const productActionStates = sourceEntries.map((entry) =>
+                                                analysisActionState[
+                                                  `${entry.submissionId}:${entry.questionId}`
+                                                ] || {
+                                                  saving: false,
+                                                  error: '',
+                                                },
+                                              )
+                                              const isSaving = productActionStates.some((state) => state.saving)
+                                              const actionError =
+                                                productActionStates.find((state) => state.error)?.error || ''
+
+                                              return (
+                                                <>
+                                                  <div className="delivery-item-header">
+                                                    <h5>{product.label}</h5>
+                                                    <div className="delivery-item-header-right">
+                                                      <span
+                                                        className={`delivery-item-status is-${product.currentCategory}`}
+                                                      >
+                                                        {product.currentCategory === 'red'
+                                                          ? 'Kritisk'
+                                                          : 'Snart tomt'}
+                                                      </span>
+                                                      {product.isOrdered ? (
+                                                        <label
+                                                          className="history-cell-checkbox-wrap"
+                                                          aria-label="Nullstill bestilling"
+                                                          title="Nullstill bestilling"
+                                                        >
+                                                          <input
+                                                            type="checkbox"
+                                                            className="history-cell-checkbox"
+                                                            checked
+                                                            disabled={isSaving}
+                                                            onChange={() => onResetDeliveryOrdered(product)}
+                                                          />
+                                                        </label>
+                                                      ) : (
+                                                        <button
+                                                          type="button"
+                                                          className="ghost history-cell-action"
+                                                          onClick={() => onMarkDeliveryOrdered(product)}
+                                                          disabled={isSaving}
+                                                          aria-label="Marker som bestilt"
+                                                          title="Marker som bestilt"
+                                                        >
+                                                          {isSaving ? '...' : '+'}
+                                                        </button>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                  <p className="delivery-item-values">
+                                                    <span
+                                                      className={`delivery-current-value is-${product.currentCategory}`}
+                                                    >
+                                                      <strong>Nå:</strong> {product.currentValue}
+                                                    </span>
+                                                    <span>
+                                                      <strong>Mål:</strong> {product.targetValue}
+                                                    </span>
+                                                  </p>
+                                                  <p>
+                                                    <strong>Maks:</strong>{' '}
+                                                    {product.unlimited
+                                                      ? 'Ubegrenset'
+                                                      : `${product.maxUnits} stk`}
+                                                  </p>
+                                                  <p>
+                                                    <strong>Anbefalt innkjøp:</strong>{' '}
+                                                    {product.unlimited
+                                                      ? 'Sett maks antall for å få beregning'
+                                                      : `${product.recommendedUnits} stk`}
+                                                  </p>
+                                                  {actionError ? (
+                                                    <p className="delivery-item-error">{actionError}</p>
+                                                  ) : null}
+                                                </>
+                                              )
+                                            })()}
+                                          </article>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="delivery-empty">Alle produkter er på normalt nivå.</p>
+                                    )}
+                                  </article>
+                                ))}
+                              </div>
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="delivery-card-scroll">
+                        <div className="delivery-card-grid">
+                          {visibleDeliveryCards.map((card) => (
+                            <article key={card.location} className="response-card delivery-card">
+                              <div className="delivery-card-header">
+                                <div>
+                                  <h4>{card.location}</h4>
+                                  <p>
+                                    <strong>By:</strong> {card.city}
+                                  </p>
+                                  <p>
+                                    <strong>Sist sendt inn:</strong> {formatTime(card.submission?.submittedAt)}
+                                  </p>
+                                </div>
+                              </div>
+                              {card.products.length > 0 ? (
+                                <div className="delivery-item-list">
+                                  {card.products.map((product) => (
+                                    <article
+                                      key={`${card.location}-${product.questionId}`}
+                                      className="delivery-item"
+                                    >
+                                      {(() => {
+                                        const sourceEntries = Array.isArray(product.sourceEntries)
+                                          ? product.sourceEntries
+                                          : []
+                                        const productActionStates = sourceEntries.map((entry) =>
+                                          analysisActionState[`${entry.submissionId}:${entry.questionId}`] || {
+                                            saving: false,
+                                            error: '',
+                                          },
+                                        )
+                                        const isSaving = productActionStates.some((state) => state.saving)
+                                        const actionError =
+                                          productActionStates.find((state) => state.error)?.error || ''
+
+                                        return (
+                                          <>
+                                            <div className="delivery-item-header">
+                                              <h5>{product.label}</h5>
+                                              <div className="delivery-item-header-right">
+                                                <span
+                                                  className={`delivery-item-status is-${product.currentCategory}`}
+                                                >
+                                                  {product.currentCategory === 'red'
+                                                    ? 'Kritisk'
+                                                    : 'Snart tomt'}
+                                                </span>
+                                                {product.isOrdered ? (
+                                                  <label
+                                                    className="history-cell-checkbox-wrap"
+                                                    aria-label="Nullstill bestilling"
+                                                    title="Nullstill bestilling"
+                                                  >
+                                                    <input
+                                                      type="checkbox"
+                                                      className="history-cell-checkbox"
+                                                      checked
+                                                      disabled={isSaving}
+                                                      onChange={() => onResetDeliveryOrdered(product)}
+                                                    />
+                                                  </label>
+                                                ) : (
+                                                  <button
+                                                    type="button"
+                                                    className="ghost history-cell-action"
+                                                    onClick={() => onMarkDeliveryOrdered(product)}
+                                                    disabled={isSaving}
+                                                    aria-label="Marker som bestilt"
+                                                    title="Marker som bestilt"
+                                                  >
+                                                    {isSaving ? '...' : '+'}
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <p className="delivery-item-values">
+                                              <span
+                                                className={`delivery-current-value is-${product.currentCategory}`}
+                                              >
+                                                <strong>Nå:</strong> {product.currentValue}
+                                              </span>
+                                              <span>
+                                                <strong>Mål:</strong> {product.targetValue}
+                                              </span>
+                                            </p>
+                                            <p>
+                                              <strong>Maks:</strong>{' '}
+                                              {product.unlimited ? 'Ubegrenset' : `${product.maxUnits} stk`}
+                                            </p>
+                                            <p>
+                                              <strong>Anbefalt innkjøp:</strong>{' '}
+                                              {product.unlimited
+                                                ? 'Sett maks antall for å få beregning'
+                                                : `${product.recommendedUnits} stk`}
+                                            </p>
+                                            {actionError ? (
+                                              <p className="delivery-item-error">{actionError}</p>
+                                            ) : null}
+                                          </>
+                                        )
+                                      })()}
+                                    </article>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="delivery-empty">Alle produkter er på normalt nivå.</p>
+                              )}
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
             {isReviewView ? (
               <div className="responses-box review-page" id="review-section">
                 <div className="review-page-header">
@@ -4265,9 +6001,11 @@ function FormPage() {
                     ) : null}
                   </div>
                   <div className="submission-modal-actions">
-                    <Link className="ghost" to={`/skjema/${activeFormSlug}/submissions`}>
-                      Back to submissions
-                    </Link>
+                    <form action={`/skjema/${activeFormSlug}/submissions`} method="get">
+                      <button type="submit" className="ghost">
+                        Back to submissions
+                      </button>
+                    </form>
                     {selectedSubmission ? (
                       <button
                         type="button"

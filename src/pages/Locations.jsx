@@ -21,7 +21,7 @@ import foodtruck1200 from "../assets/optimized/foodtruck-1200.png";
 
 const emptyLocationForm = {
   name: "",
-  address: "",
+  city: "",
   weekdayHours: "",
   weekendHours: "",
   mapUrl: "",
@@ -133,10 +133,10 @@ function Locations() {
 
   function validateLocation(formData) {
     if (!formData.name.trim()) {
-      return "Navn er påkrevd.";
+      return "Adresse/sted er påkrevd.";
     }
-    if (!formData.address.trim()) {
-      return "Adresse er påkrevd.";
+    if (!formData.city.trim()) {
+      return "By er påkrevd.";
     }
 
     const normalizedMapUrl = normalizeUrl(formData.mapUrl);
@@ -173,7 +173,8 @@ function Locations() {
 
       await addDoc(collection(db, "locations"), {
         name: newLocation.name.trim(),
-        address: newLocation.address.trim(),
+        city: newLocation.city.trim(),
+        address: newLocation.city.trim(),
         weekdayHours: newLocation.weekdayHours.trim(),
         weekendHours: newLocation.weekendHours.trim(),
         mapUrl: normalizeUrl(newLocation.mapUrl),
@@ -203,7 +204,7 @@ function Locations() {
     setEditId(location.id);
     setEditLocation({
       name: location.name || "",
-      address: location.address || "",
+      city: location.city || location.address || "",
       weekdayHours: location.weekdayHours || "",
       weekendHours: location.weekendHours || "",
       mapUrl: location.mapUrl || "",
@@ -237,7 +238,8 @@ function Locations() {
 
       await updateDoc(doc(db, "locations", editId), {
         name: editLocation.name.trim(),
-        address: editLocation.address.trim(),
+        city: editLocation.city.trim(),
+        address: editLocation.city.trim(),
         weekdayHours: editLocation.weekdayHours.trim(),
         weekendHours: editLocation.weekendHours.trim(),
         mapUrl: normalizeUrl(editLocation.mapUrl),
@@ -330,7 +332,7 @@ function Locations() {
             </div>
             <p className="location-neighborhood">
               <FontAwesomeIcon icon={faLocationDot} />{" "}
-              {location.address || "Ukjent adresse"}
+              {location.city || location.address || "Ukjent by"}
             </p>
             {location.weekdayHours ? <p>{location.weekdayHours}</p> : null}
             {location.weekendHours ? <p>{location.weekendHours}</p> : null}
@@ -401,7 +403,7 @@ function Locations() {
                     <h3 id="location-modal-title">Legg til plassering</h3>
 
                     <label className="field-block" htmlFor="location-name">
-                      <span>Navn</span>
+                      <span>Adresse/sted</span>
                       <input
                         id="location-name"
                         type="text"
@@ -417,15 +419,15 @@ function Locations() {
                     </label>
 
                     <label className="field-block" htmlFor="location-address">
-                      <span>Adresse</span>
+                      <span>By</span>
                       <input
                         id="location-address"
                         type="text"
-                        value={newLocation.address}
+                        value={newLocation.city}
                         onChange={(event) =>
                           setNewLocation((previous) => ({
                             ...previous,
-                            address: event.target.value,
+                            city: event.target.value,
                           }))
                         }
                         required
@@ -553,7 +555,7 @@ function Locations() {
                     <h3 id="location-edit-modal-title">Rediger plassering</h3>
 
                     <label className="field-block" htmlFor="edit-location-name">
-                      <span>Navn</span>
+                      <span>Adresse/sted</span>
                       <input
                         id="edit-location-name"
                         type="text"
@@ -572,15 +574,15 @@ function Locations() {
                       className="field-block"
                       htmlFor="edit-location-address"
                     >
-                      <span>Adresse</span>
+                      <span>By</span>
                       <input
                         id="edit-location-address"
                         type="text"
-                        value={editLocation.address}
+                        value={editLocation.city}
                         onChange={(event) =>
                           setEditLocation((previous) => ({
                             ...previous,
-                            address: event.target.value,
+                            city: event.target.value,
                           }))
                         }
                         required
