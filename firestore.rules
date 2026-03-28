@@ -46,7 +46,8 @@ service cloud.firestore {
     match /formSubmissionReceipts/{docId} {
       allow get: if true;
       allow list: if false;
-      allow create, update, delete: if isCrustUser();
+      allow create: if true;
+      allow update, delete: if isCrustUser();
     }
 
     match /publications/{docId} {

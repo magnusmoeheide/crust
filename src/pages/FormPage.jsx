@@ -1107,6 +1107,7 @@ function FormPage() {
 
     try {
       const submissionRef = doc(collection(db, 'formSubmissions'))
+      const receiptRef = doc(collection(db, 'formSubmissionReceipts'))
       const imagePaths = []
       const submissionAnswers = { ...answers }
 
@@ -1199,17 +1200,32 @@ function FormPage() {
         }),
       )
 
+      const submitterEmail = getSubmissionEmail(submissionAnswers, formData.questions)
+      const submittedAtIso = new Date().toISOString()
+
       await setDoc(submissionRef, {
         formId: formDocId,
         formSlug: activeFormSlug,
         formTitle: formData.title || activeFormSlug,
         answers: submissionAnswers,
         imagePaths,
-        submitterEmail: getSubmissionEmail(submissionAnswers, formData.questions),
+        receiptToken: receiptRef.id,
+        submitterEmail,
         status: 'awaiting review',
         statusUpdatedBy: 'system',
         statusUpdatedAt: serverTimestamp(),
         submittedAt: serverTimestamp(),
+      })
+
+      await setDoc(receiptRef, {
+        formSlug: activeFormSlug,
+        formTitle: formData.title || activeFormSlug,
+        submissionId: submissionRef.id,
+        submitterEmail,
+        submittedAtIso,
+        answers: submissionAnswers,
+        imagePaths,
+        createdAt: serverTimestamp(),
       })
 
       const clearedAnswers = formData.questions.reduce((accumulator, question) => {
@@ -2844,6 +2860,16 @@ function FormPage() {
                                         getSubmissionDayKey(submission.submittedAt),
                                       )}
                                     </small>
+                                    {submission.receiptToken ? (
+                                      <Link
+                                        className="ghost"
+                                        to={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        Vis kvittering
+                                      </Link>
+                                    ) : null}
                                     <button
                                       type="button"
                                       className="ghost danger-button"
