@@ -771,6 +771,20 @@
   table-layout: auto;
 }
 
+.history-table .history-current-column {
+  border-left: 2px solid rgba(24, 44, 60, 0.7);
+  border-right: 2px solid rgba(24, 44, 60, 0.7);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.history-table thead .history-current-column {
+  border-top: 2px solid rgba(24, 44, 60, 0.7);
+}
+
+.history-table tbody tr:last-child .history-current-column {
+  border-bottom: 2px solid rgba(24, 44, 60, 0.7);
+}
+
 .history-table th,
 .history-table td {
   text-align: left;

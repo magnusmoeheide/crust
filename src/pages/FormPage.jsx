@@ -541,6 +541,20 @@ function getFormSaveErrorMessage(error) {
   return code ? `Kunne ikke lagre skjema (${code}).` : 'Kunne ikke lagre skjema. Prøv igjen.'
 }
 
+function getSubmitErrorMessage(error) {
+  const code = error?.code || ''
+
+  if (code === 'permission-denied') {
+    return 'Kunne ikke sende inn skjemaet. Mangler tilgang i Firestore-regler.'
+  }
+
+  if (code === 'storage/unauthorized') {
+    return 'Kunne ikke laste opp bilde. Mangler tilgang i Firebase Storage-regler.'
+  }
+
+  return code ? `Noe gikk galt ved innsending (${code}). Prøv igjen.` : 'Noe gikk galt ved innsending. Prøv igjen.'
+}
+
 function FormPage() {
   const { formSlug = STENGESKJEMA_ID, receiptToken = '' } = useParams()
   const location = useLocation()
@@ -600,6 +614,32 @@ function FormPage() {
   const [receiptImageUrls, setReceiptImageUrls] = useState({})
 
   const { user, isAdmin, loading, error } = useAdminSession()
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const viewportMeta = document.querySelector('meta[name="viewport"]')
+    if (!viewportMeta) {
+      return
+    }
+
+    const originalContent = viewportMeta.getAttribute('content') || ''
+
+    if (isStandalonePublicForm) {
+      viewportMeta.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover',
+      )
+    } else {
+      viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0')
+    }
+
+    return () => {
+      viewportMeta.setAttribute('content', originalContent || 'width=device-width, initial-scale=1.0')
+    }
+  }, [isStandalonePublicForm])
 
   useEffect(() => {
     let cancelled = false
@@ -1321,30 +1361,41 @@ function FormPage() {
       const submitterEmail = getSubmissionEmail(submissionAnswers, formData.questions)
       const submittedAtIso = new Date().toISOString()
 
+      let receiptTokenValue = ''
+
+      try {
+        await setDoc(receiptRef, {
+          formSlug: activeFormSlug,
+          formTitle: formData.title || activeFormSlug,
+          submissionId: submissionRef.id,
+          submitterEmail,
+          submittedAtIso,
+          answers: submissionAnswers,
+          imagePaths,
+          imageUrls: receiptImageMap,
+          createdAt: serverTimestamp(),
+        })
+        receiptTokenValue = receiptRef.id
+      } catch (receiptError) {
+        console.error('Failed to create submission receipt', {
+          formSlug: activeFormSlug,
+          submissionId: submissionRef.id,
+          error: receiptError,
+        })
+      }
+
       await setDoc(submissionRef, {
         formId: formDocId,
         formSlug: activeFormSlug,
         formTitle: formData.title || activeFormSlug,
         answers: submissionAnswers,
         imagePaths,
-        receiptToken: receiptRef.id,
+        ...(receiptTokenValue ? { receiptToken: receiptTokenValue } : {}),
         submitterEmail,
         status: 'awaiting review',
         statusUpdatedBy: 'system',
         statusUpdatedAt: serverTimestamp(),
         submittedAt: serverTimestamp(),
-      })
-
-      await setDoc(receiptRef, {
-        formSlug: activeFormSlug,
-        formTitle: formData.title || activeFormSlug,
-        submissionId: submissionRef.id,
-        submitterEmail,
-        submittedAtIso,
-        answers: submissionAnswers,
-        imagePaths,
-        imageUrls: receiptImageMap,
-        createdAt: serverTimestamp(),
       })
 
       const clearedAnswers = formData.questions.reduce((accumulator, question) => {
@@ -1370,11 +1421,15 @@ function FormPage() {
         message: 'Takk! Skjemaet er sendt inn.',
         error: '',
       })
-    } catch {
+    } catch (error) {
+      console.error('Failed to submit form', {
+        formSlug: activeFormSlug,
+        error,
+      })
       setSubmitState({
         submitting: false,
         message: '',
-        error: 'Noe gikk galt ved innsending. Prøv igjen.',
+        error: getSubmitErrorMessage(error),
       })
     }
   }
@@ -3157,7 +3212,10 @@ function FormPage() {
                               <tr>
                                 <th>Spørsmål</th>
                                 {row.items.map((submission, index) => (
-                                  <th key={`${row.location}-${submission.id}`}>
+                                  <th
+                                    key={`${row.location}-${submission.id}`}
+                                    className={index === 0 ? 'history-current-column' : ''}
+                                  >
                                     <div className="history-cell-meta">
                                       <strong>{index === 0 ? 'Nyeste' : `${index + 1}`}</strong>
                                       <small>{getDatePart(submission.submittedAt)}</small>
@@ -3171,11 +3229,16 @@ function FormPage() {
                               {analysisQuestions.map((question) => (
                                 <tr key={`${row.location}-${question.id}`}>
                                   <th scope="row">{question.analysisLabel || question.label}</th>
-                                  {row.items.map((submission) => {
+                                  {row.items.map((submission, submissionIndex) => {
                                     const values = getHistoryAnswerValues(submission, question)
 
                                     return (
-                                      <td key={`${submission.id}-${question.id}`} className="history-cell">
+                                      <td
+                                        key={`${submission.id}-${question.id}`}
+                                        className={`history-cell ${
+                                          submissionIndex === 0 ? 'history-current-column' : ''
+                                        }`}
+                                      >
                                         {values.length > 0 ? values.join(' | ') : '-'}
                                       </td>
                                     )
