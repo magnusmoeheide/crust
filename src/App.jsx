@@ -313,8 +313,20 @@ function App() {
           element={withPageLoader(<FormPage />)}
         />
         <Route
-          path="/skjema/:formSlug/historikk"
+          path="/skjema/:formSlug/review/:submissionId"
           element={withPageLoader(<FormPage />)}
+        />
+        <Route
+          path="/skjema/:formSlug/flagget"
+          element={withPageLoader(<FormPage />)}
+        />
+        <Route
+          path="/skjema/:formSlug/analyse"
+          element={withPageLoader(<FormPage />)}
+        />
+        <Route
+          path="/skjema/:formSlug/historikk"
+          element={<Navigate replace to="..\/analyse" relative="path" />}
         />
         <Route
           path="/skjema/:formSlug/edit"

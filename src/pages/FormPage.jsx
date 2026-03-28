@@ -20,10 +20,85 @@ import './Forms.css'
 
 const LOCATION_OTHER_VALUE = '__other_location__'
 const FORM_DRAFT_STORAGE_PREFIX = 'crust-form-draft:'
+const FORM_LANGUAGE_STORAGE_KEY = 'crust-public-form-language'
+const ENGLISH_TRANSLATION_CACHE_KEY = 'crust-public-form-english-cache'
 const SUBMISSION_DATE_KEY = 'Innsendt dato'
 const SUBMISSION_TIME_KEY = 'Innsendt tid'
 const SELECT_DETAIL_SUFFIX = '__details'
 const SELF_DECLARATION_ACCEPTED_KEY = 'Egenerklæring bekreftet'
+const SELECT_OPTION_HISTORY_CATEGORIES = ['normal', 'orange', 'red']
+const PUBLIC_FORM_COPY = {
+  no: {
+    languageLabel: 'Språk',
+    norwegian: 'Norsk',
+    english: 'English',
+    translating: 'Oversetter skjemaet til engelsk...',
+    translatingHint: 'Dette kan ta noen sekunder.',
+    translationError: 'Kunne ikke oversette alt akkurat nå. Noe vises fortsatt på norsk.',
+    formEyebrow: 'Skjema',
+    receiptEyebrow: 'Kvittering',
+    receiptLead: 'Her er en kopi av akkurat denne innsendingen.',
+    receiptTitlePrefix: 'Takk,',
+    receiptTitleSuffix: 'er sendt inn',
+    loadingForm: 'Laster skjema...',
+    loadingReceipt: 'Laster kvittering...',
+    resetAnswers: 'Nullstill alle svar',
+    resetAnswersConfirm: 'Nullstill alle svar i skjemaet?',
+    sendForm: 'Send skjema',
+    sendingForm: 'Sender skjema...',
+    formSent: 'Skjema sendt inn',
+    select: 'Velg',
+    loadingLocations: 'Laster lokasjoner...',
+    chooseLocation: 'Velg lokasjon',
+    other: 'Annet',
+    noLocationsHelp: 'Ingen lagrede lokasjoner funnet. Velg "Annet" for å skrive inn manuelt.',
+    writeHere: 'Skriv her',
+    enterLocation: 'Skriv inn lokasjon',
+    takePhoto: 'Ta bilde',
+    uploadNewPhoto: 'Last opp nytt bilde',
+    describeMore: 'Beskriv nærmere',
+    fullName: 'Fullt navn',
+    emailAddress: 'E-postadresse',
+    selfDeclarationFallback: 'Jeg bekrefter opplysningene i skjemaet.',
+    confirmSelfDeclaration: 'Jeg bekrefter egenerklæringen',
+    optionalNote: ' (ikke obligatorisk)',
+  },
+  en: {
+    languageLabel: 'Language',
+    norwegian: 'Norwegian',
+    english: 'English',
+    translating: 'Translating the form to English...',
+    translatingHint: 'This can take a few seconds.',
+    translationError: 'Could not translate everything right now. Some text is still shown in Norwegian.',
+    formEyebrow: 'Form',
+    receiptEyebrow: 'Receipt',
+    receiptLead: 'Here is a copy of this exact submission.',
+    receiptTitlePrefix: 'Thanks,',
+    receiptTitleSuffix: 'has been submitted',
+    loadingForm: 'Loading form...',
+    loadingReceipt: 'Loading receipt...',
+    resetAnswers: 'Reset all answers',
+    resetAnswersConfirm: 'Reset all answers in the form?',
+    sendForm: 'Submit form',
+    sendingForm: 'Submitting form...',
+    formSent: 'Form submitted',
+    select: 'Choose',
+    loadingLocations: 'Loading locations...',
+    chooseLocation: 'Choose location',
+    other: 'Other',
+    noLocationsHelp: 'No saved locations were found. Choose "Other" to enter one manually.',
+    writeHere: 'Write here',
+    enterLocation: 'Enter location',
+    takePhoto: 'Take photo',
+    uploadNewPhoto: 'Upload a new photo',
+    describeMore: 'Describe in more detail',
+    fullName: 'Full name',
+    emailAddress: 'Email address',
+    selfDeclarationFallback: 'I confirm the information in the form.',
+    confirmSelfDeclaration: 'I confirm the self-declaration',
+    optionalNote: ' (optional)',
+  },
+}
 
 function toQuestionId(raw) {
   const base = String(raw || '')
@@ -59,6 +134,115 @@ function parseQuestionOptions(rawOptions) {
   }
 
   return []
+}
+
+function readPreferredPublicFormLanguage() {
+  if (typeof window === 'undefined') {
+    return 'no'
+  }
+
+  try {
+    return window.localStorage.getItem(FORM_LANGUAGE_STORAGE_KEY) === 'en' ? 'en' : 'no'
+  } catch {
+    return 'no'
+  }
+}
+
+function writePreferredPublicFormLanguage(language) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(FORM_LANGUAGE_STORAGE_KEY, language === 'en' ? 'en' : 'no')
+  } catch {}
+}
+
+function readEnglishTranslationCache() {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+
+  try {
+    const stored = window.localStorage.getItem(ENGLISH_TRANSLATION_CACHE_KEY)
+    if (!stored) {
+      return {}
+    }
+
+    const parsed = JSON.parse(stored)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeEnglishTranslationCache(cache) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(ENGLISH_TRANSLATION_CACHE_KEY, JSON.stringify(cache))
+  } catch {}
+}
+
+function collectFormTranslationTexts(form) {
+  const textSet = new Set()
+
+  function addText(value) {
+    const text = String(value || '').trim()
+    if (text) {
+      textSet.add(text)
+    }
+  }
+
+  addText(form?.title)
+  addText(form?.description)
+  addText(form?.selfDeclarationText)
+
+  ;(form?.questions || []).forEach((question) => {
+    addText(question?.label)
+    addText(question?.placeholder)
+    ;(question?.options || []).forEach((option) => addText(option))
+
+    if (question?.selectOptionDetails && typeof question.selectOptionDetails === 'object') {
+      Object.values(question.selectOptionDetails).forEach((detail) => {
+        addText(detail?.text)
+      })
+    }
+  })
+
+  return Array.from(textSet)
+}
+
+async function translateNorwegianTextToEnglish(text, signal) {
+  const value = String(text || '').trim()
+  if (!value) {
+    return ''
+  }
+
+  const params = new URLSearchParams({
+    client: 'gtx',
+    sl: 'no',
+    tl: 'en',
+    dt: 't',
+    q: value,
+  })
+
+  const response = await fetch(`https://translate.googleapis.com/translate_a/single?${params.toString()}`, {
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Translate request failed (${response.status})`)
+  }
+
+  const payload = await response.json()
+  const translated = Array.isArray(payload?.[0])
+    ? payload[0].map((part) => String(part?.[0] || '')).join('').trim()
+    : ''
+
+  return translated || value
 }
 
 function readFileAsDataUrl(file) {
@@ -132,6 +316,9 @@ function normalizeQuestion(question, index) {
                   : '',
             messageColor: typeof rawDetail?.messageColor === 'string' ? rawDetail.messageColor : '',
             messageBold: Boolean(rawDetail?.messageBold),
+            historyCategory: SELECT_OPTION_HISTORY_CATEGORIES.includes(rawDetail?.historyCategory)
+              ? rawDetail.historyCategory
+              : 'normal',
           }
 
           return accumulator
@@ -147,6 +334,8 @@ function normalizeQuestion(question, index) {
     imageUrl: String(question?.imageUrl || '').trim(),
     imageZoom: normalizeImageZoom(question?.imageZoom),
     includeInAnalysis: type === 'section' ? false : Boolean(question?.includeInAnalysis),
+    includeInReview: type === 'section' ? false : Boolean(question?.includeInReview),
+    reviewHelpText: type === 'section' ? '' : String(question?.reviewHelpText || '').trim(),
     analysisLabel: type === 'section' ? '' : String(question?.analysisLabel || '').trim(),
     helpTextColor: String(question?.helpTextColor || '').trim(),
     helpTextBold: Boolean(question?.helpTextBold),
@@ -168,23 +357,25 @@ function formatTime(timestamp) {
   return '-'
 }
 
-function getDatePart(timestamp) {
+function toDateValue(timestamp) {
   if (!timestamp) {
-    return '-'
+    return null
   }
   const date = typeof timestamp.toDate === 'function' ? timestamp.toDate() : timestamp
-  if (!(date instanceof Date)) {
+  return date instanceof Date ? date : null
+}
+
+function getDatePart(timestamp) {
+  const date = toDateValue(timestamp)
+  if (!date) {
     return '-'
   }
   return date.toLocaleDateString('nb-NO')
 }
 
 function getClockPart(timestamp) {
-  if (!timestamp) {
-    return '-'
-  }
-  const date = typeof timestamp.toDate === 'function' ? timestamp.toDate() : timestamp
-  if (!(date instanceof Date)) {
+  const date = toDateValue(timestamp)
+  if (!date) {
     return '-'
   }
   return date.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
@@ -351,6 +542,34 @@ function getSelectOptionBehavior(question, selectedOption) {
     text: typeof detail?.text === 'string' ? detail.text : '',
     messageColor: typeof detail?.messageColor === 'string' ? detail.messageColor : '',
     messageBold: Boolean(detail?.messageBold),
+    historyCategory: SELECT_OPTION_HISTORY_CATEGORIES.includes(detail?.historyCategory)
+      ? detail.historyCategory
+      : 'normal',
+  }
+}
+
+function getHistoryCellCategory(question, submission) {
+  if (question?.type !== 'select') {
+    return ''
+  }
+
+  const selectedValue = String(submission?.answers?.[question.id] || '').trim()
+  if (!selectedValue) {
+    return ''
+  }
+
+  const historyCategory = getSelectOptionBehavior(question, selectedValue).historyCategory
+  return historyCategory === 'orange' || historyCategory === 'red' ? historyCategory : ''
+}
+
+function getSubmissionStatusLabel(status) {
+  switch (String(status || '').trim()) {
+    case 'reviewed':
+      return 'Reviewed'
+    case 'awaiting review':
+      return 'Awaiting review'
+    default:
+      return status ? String(status) : 'Awaiting review'
   }
 }
 
@@ -380,7 +599,16 @@ function getAnswerDisplayLabel(answerKey, answers, questions = []) {
   return question?.label || answerKey
 }
 
-function getOrderedAnswerEntries(answers, questions = []) {
+function getQuestionForAnswerKey(answerKey, questions = []) {
+  const detailQuestionId = answerKey.endsWith(SELECT_DETAIL_SUFFIX)
+    ? answerKey.slice(0, -SELECT_DETAIL_SUFFIX.length)
+    : answerKey
+
+  return questions.find((item) => item.id === detailQuestionId) || null
+}
+
+function getOrderedAnswerEntries(answers, questions = [], options = {}) {
+  const includeRemainingAnswers = options.includeRemainingAnswers !== false
   const usedKeys = new Set()
   const entries = []
 
@@ -403,17 +631,40 @@ function getOrderedAnswerEntries(answers, questions = []) {
     }
   })
 
-  Object.entries(answers || {}).forEach(([key, value]) => {
-    if (usedKeys.has(key)) {
-      return
-    }
-    if (!String(value || '').trim()) {
-      return
-    }
-    entries.push([key, value])
-  })
+  if (includeRemainingAnswers) {
+    Object.entries(answers || {}).forEach(([key, value]) => {
+      if (usedKeys.has(key)) {
+        return
+      }
+      if (!String(value || '').trim()) {
+        return
+      }
+      entries.push([key, value])
+    })
+  }
 
   return entries
+}
+
+function getReviewDisplayValue(answerKey, value, question, translate) {
+  if (isStorageImagePath(value)) {
+    return ''
+  }
+
+  const normalizedValue = String(value || '').trim()
+  if (!normalizedValue) {
+    return '-'
+  }
+
+  if (!question || answerKey.endsWith(SELECT_DETAIL_SUFFIX)) {
+    return normalizedValue
+  }
+
+  if (question.type === 'select') {
+    return translate(normalizedValue)
+  }
+
+  return normalizedValue
 }
 
 function createEditorQuestion(seed) {
@@ -426,6 +677,8 @@ function createEditorQuestion(seed) {
     imageUrl: '',
     imageZoom: 1,
     includeInAnalysis: false,
+    includeInReview: false,
+    reviewHelpText: '',
     analysisLabel: '',
     helpTextColor: '',
     helpTextBold: false,
@@ -556,15 +809,19 @@ function getSubmitErrorMessage(error) {
 }
 
 function FormPage() {
-  const { formSlug = STENGESKJEMA_ID, receiptToken = '' } = useParams()
+  const { formSlug = STENGESKJEMA_ID, receiptToken = '', submissionId = '' } = useParams()
   const location = useLocation()
   const activeFormSlug = String(formSlug || STENGESKJEMA_ID).trim().toLowerCase()
   const isDefaultForm = activeFormSlug === STENGESKJEMA_ID
   const isSubmissionsView = location.pathname.endsWith('/submissions')
-  const isHistoryView = location.pathname.endsWith('/historikk')
+  const isReviewView = location.pathname.includes('/review/')
+  const isFlaggedView = location.pathname.endsWith('/flagget')
+  const isHistoryView =
+    location.pathname.endsWith('/analyse') || location.pathname.endsWith('/historikk')
   const isEditPage = location.pathname.endsWith('/edit')
   const isReceiptPage = location.pathname.includes('/kvittering/')
-  const isStandalonePublicForm = !isSubmissionsView && !isEditPage && !isHistoryView
+  const isStandalonePublicForm =
+    !isSubmissionsView && !isEditPage && !isHistoryView && !isFlaggedView && !isReviewView
 
   const [formData, setFormData] = useState(defaultStengeskjema)
   const [formDocId, setFormDocId] = useState(STENGESKJEMA_ID)
@@ -583,6 +840,9 @@ function FormPage() {
   const [draftReady, setDraftReady] = useState(false)
   const [submitState, setSubmitState] = useState({ submitting: false, message: '', error: '' })
   const [submitOverlay, setSubmitOverlay] = useState({ open: false, status: 'idle' })
+  const [displayLanguage, setDisplayLanguage] = useState(readPreferredPublicFormLanguage)
+  const [englishTranslations, setEnglishTranslations] = useState(readEnglishTranslationCache)
+  const [translationState, setTranslationState] = useState({ loading: false, error: '' })
 
   const [editorTitle, setEditorTitle] = useState(defaultStengeskjema.title)
   const [editorDescription, setEditorDescription] = useState(defaultStengeskjema.description)
@@ -605,15 +865,48 @@ function FormPage() {
   const [statusUpdateState, setStatusUpdateState] = useState({})
   const [deleteSubmissionState, setDeleteSubmissionState] = useState({})
   const [selectedSubmissionId, setSelectedSubmissionId] = useState('')
-  const [selectedSubmissionImageUrls, setSelectedSubmissionImageUrls] = useState([])
+  const [selectedSubmissionImageUrls, setSelectedSubmissionImageUrls] = useState({})
   const [selectedSubmissionImagesLoading, setSelectedSubmissionImagesLoading] = useState(false)
   const [selectedSubmissionDay, setSelectedSubmissionDay] = useState('')
+  const [reviewDraftStatuses, setReviewDraftStatuses] = useState({})
+  const [reviewDraftComments, setReviewDraftComments] = useState({})
+  const [reviewSubmissionState, setReviewSubmissionState] = useState({ saving: false, error: '' })
+  const [historySubmissionLimit, setHistorySubmissionLimit] = useState('3')
+  const [historyQuestionFilterOpen, setHistoryQuestionFilterOpen] = useState(false)
+  const [historyShowAllQuestions, setHistoryShowAllQuestions] = useState(true)
+  const [selectedHistoryQuestionIds, setSelectedHistoryQuestionIds] = useState([])
+  const [historyLocationFilterOpen, setHistoryLocationFilterOpen] = useState(false)
+  const [historyShowAllLocations, setHistoryShowAllLocations] = useState(true)
+  const [selectedHistoryLocations, setSelectedHistoryLocations] = useState([])
   const [receiptSubmission, setReceiptSubmission] = useState(null)
   const [loadingReceipt, setLoadingReceipt] = useState(false)
   const [receiptError, setReceiptError] = useState('')
   const [receiptImageUrls, setReceiptImageUrls] = useState({})
 
   const { user, isAdmin, loading, error } = useAdminSession()
+  const shouldTranslateToEnglish = displayLanguage === 'en' || isReviewView
+  const publicCopy = shouldTranslateToEnglish ? PUBLIC_FORM_COPY.en : PUBLIC_FORM_COPY.no
+
+  function translateText(value) {
+    const text = String(value || '')
+    if (!text) {
+      return ''
+    }
+
+    if (!shouldTranslateToEnglish) {
+      return text
+    }
+
+    return englishTranslations[text] || englishTranslations[text.trim()] || text
+  }
+
+  function getLocalizedInputPlaceholder(question, fallback = '') {
+    if (question?.placeholder) {
+      return translateText(question.placeholder)
+    }
+
+    return fallback
+  }
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -640,6 +933,14 @@ function FormPage() {
       viewportMeta.setAttribute('content', originalContent || 'width=device-width, initial-scale=1.0')
     }
   }, [isStandalonePublicForm])
+
+  useEffect(() => {
+    if (!isStandalonePublicForm) {
+      return
+    }
+
+    writePreferredPublicFormLanguage(displayLanguage)
+  }, [displayLanguage, isStandalonePublicForm])
 
   useEffect(() => {
     let cancelled = false
@@ -727,6 +1028,71 @@ function FormPage() {
   }, [submitState.error, submitState.message, submitState.submitting])
 
   useEffect(() => {
+    if ((!isStandalonePublicForm && !isReviewView) || isReceiptPage || loadingForm || !shouldTranslateToEnglish) {
+      setTranslationState({ loading: false, error: '' })
+      return
+    }
+
+    const missingTexts = collectFormTranslationTexts(formData).filter(
+      (text) => !String(englishTranslations[text] || '').trim(),
+    )
+
+    if (missingTexts.length === 0) {
+      setTranslationState({ loading: false, error: '' })
+      return
+    }
+
+    let cancelled = false
+    const controller = typeof AbortController === 'function' ? new AbortController() : null
+
+    setTranslationState({ loading: true, error: '' })
+
+    async function loadTranslations() {
+      const nextTranslations = { ...englishTranslations }
+      let hadError = false
+
+      for (const text of missingTexts) {
+        try {
+          nextTranslations[text] = await translateNorwegianTextToEnglish(text, controller?.signal)
+        } catch (error) {
+          if (error?.name === 'AbortError') {
+            return
+          }
+          hadError = true
+          nextTranslations[text] = text
+        }
+      }
+
+      if (cancelled) {
+        return
+      }
+
+      setEnglishTranslations(nextTranslations)
+      writeEnglishTranslationCache(nextTranslations)
+      setTranslationState({
+        loading: false,
+        error: hadError ? publicCopy.translationError : '',
+      })
+    }
+
+    loadTranslations()
+
+    return () => {
+      cancelled = true
+      controller?.abort()
+    }
+  }, [
+    englishTranslations,
+    formData,
+    isReceiptPage,
+    isReviewView,
+    isStandalonePublicForm,
+    loadingForm,
+    publicCopy.translationError,
+    shouldTranslateToEnglish,
+  ])
+
+  useEffect(() => {
     if (loadingForm) {
       setDraftReady(false)
       return
@@ -784,7 +1150,16 @@ function FormPage() {
   }, [activeFormSlug, formData.enableSelfDeclaration, formData.questions, isReceiptPage, loadingForm])
 
   useEffect(() => {
-    if (loadingForm || !draftReady || isEditPage || isSubmissionsView || isReceiptPage) {
+    if (
+      loadingForm ||
+      !draftReady ||
+      isEditPage ||
+      isSubmissionsView ||
+      isReceiptPage ||
+      isHistoryView ||
+      isFlaggedView ||
+      isReviewView
+    ) {
       return
     }
 
@@ -831,7 +1206,10 @@ function FormPage() {
     draftReady,
     formData.questions,
     isEditPage,
+    isFlaggedView,
+    isHistoryView,
     isReceiptPage,
+    isReviewView,
     isSubmissionsView,
     loadingForm,
     locationOtherAnswers,
@@ -1018,8 +1396,13 @@ function FormPage() {
   }, [receiptSubmission])
 
   useEffect(() => {
+    if (isReviewView && submissionId) {
+      setSelectedSubmissionId(submissionId)
+      return
+    }
+
     setSelectedSubmissionId('')
-  }, [activeFormSlug, isSubmissionsView])
+  }, [activeFormSlug, isSubmissionsView, isFlaggedView, isReviewView, submissionId])
 
   useEffect(() => {
     if (!isSubmissionsView) {
@@ -1043,20 +1426,61 @@ function FormPage() {
 
   useEffect(() => {
     if (!selectedSubmissionId) {
-      setSelectedSubmissionImageUrls([])
+      setSelectedSubmissionImageUrls({})
       setSelectedSubmissionImagesLoading(false)
+      setReviewDraftStatuses({})
+      setReviewDraftComments({})
+      setReviewSubmissionState({ saving: false, error: '' })
       return
     }
 
     const selectedSubmission = submissions.find((item) => item.id === selectedSubmissionId)
     if (!selectedSubmission) {
-      setSelectedSubmissionImageUrls([])
+      setSelectedSubmissionImageUrls({})
       setSelectedSubmissionImagesLoading(false)
+      setReviewDraftStatuses({})
+      setReviewDraftComments({})
+      setReviewSubmissionState({ saving: false, error: '' })
       return
     }
 
     let cancelled = false
     setSelectedSubmissionImagesLoading(true)
+    const reviewQuestionsForSubmission = formData.questions.filter(
+      (question) => !isSectionQuestion(question) && Boolean(question.includeInReview),
+    )
+    const reviewEntries = getOrderedAnswerEntries(
+      selectedSubmission.answers || {},
+      reviewQuestionsForSubmission,
+      {
+        includeRemainingAnswers: false,
+      },
+    )
+    const flaggedKeys = Array.isArray(selectedSubmission.flaggedAnswers)
+      ? selectedSubmission.flaggedAnswers
+          .map((item) => String(item?.answerKey || '').trim())
+          .filter(Boolean)
+      : []
+    const defaultStatus = selectedSubmission.status === 'reviewed' ? 'approved' : ''
+
+    setReviewDraftStatuses(
+      Object.fromEntries(
+        reviewEntries.map(([answerKey]) => [
+          answerKey,
+          flaggedKeys.includes(answerKey) ? 'flagged' : defaultStatus,
+        ]),
+      ),
+    )
+    setReviewDraftComments(
+      Array.isArray(selectedSubmission.flaggedAnswers)
+        ? Object.fromEntries(
+            selectedSubmission.flaggedAnswers
+              .map((item) => [String(item?.answerKey || '').trim(), String(item?.comment || '')])
+              .filter(([answerKey]) => Boolean(answerKey)),
+          )
+        : {},
+    )
+    setReviewSubmissionState({ saving: false, error: '' })
 
     const allPaths = [
       ...(Array.isArray(selectedSubmission.imagePaths) ? selectedSubmission.imagePaths : []),
@@ -1068,17 +1492,19 @@ function FormPage() {
       uniquePaths.map(async (path) => {
         try {
           const url = await getDownloadURL(ref(storage, path))
-          return url
+          return [path, url]
         } catch {
-          return ''
+          return [path, '']
         }
       }),
     )
-      .then((urls) => {
+      .then((pairs) => {
         if (cancelled) {
           return
         }
-        setSelectedSubmissionImageUrls(urls.filter((url) => url.length > 0))
+        setSelectedSubmissionImageUrls(
+          Object.fromEntries(pairs.filter(([, url]) => url.length > 0)),
+        )
       })
       .finally(() => {
         if (!cancelled) {
@@ -1089,7 +1515,26 @@ function FormPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedSubmissionId, submissions])
+  }, [formData.questions, selectedSubmissionId, submissions])
+
+  useEffect(() => {
+    const validQuestionIds = new Set(
+      formData.questions
+        .filter((question) => !isSectionQuestion(question) && Boolean(question.includeInAnalysis))
+        .map((question) => question.id),
+    )
+
+    setSelectedHistoryQuestionIds((previous) =>
+      previous.filter((questionId) => validQuestionIds.has(questionId)),
+    )
+  }, [formData.questions])
+
+  useEffect(() => {
+    if (!isHistoryView) {
+      setHistoryQuestionFilterOpen(false)
+      setHistoryLocationFilterOpen(false)
+    }
+  }, [isHistoryView])
 
   function onAnswerChange(questionId, value) {
     setAnswers((previous) => ({
@@ -1172,7 +1617,7 @@ function FormPage() {
   }
 
   function resetAllAnswers() {
-    const confirmed = window.confirm('Nullstill alle svar i skjemaet?')
+    const confirmed = window.confirm(publicCopy.resetAnswersConfirm)
     if (!confirmed) {
       return
     }
@@ -1210,7 +1655,10 @@ function FormPage() {
       setSubmitState({
         submitting: false,
         message: '',
-        error: 'Du må bekrefte egenerklæringen.',
+        error:
+          displayLanguage === 'en'
+            ? 'You must confirm the self-declaration.'
+            : 'Du må bekrefte egenerklæringen.',
       })
       return
     }
@@ -1252,7 +1700,10 @@ function FormPage() {
       setSubmitState({
         submitting: false,
         message: '',
-        error: `Manglende svar: ${missingRequired.label}`,
+        error:
+          displayLanguage === 'en'
+            ? `Missing answer: ${translateText(missingRequired.label)}`
+            : `Manglende svar: ${missingRequired.label}`,
       })
       return
     }
@@ -1418,7 +1869,8 @@ function FormPage() {
       setFormInstanceKey((previous) => previous + 1)
       setSubmitState({
         submitting: false,
-        message: 'Takk! Skjemaet er sendt inn.',
+        message:
+          displayLanguage === 'en' ? 'Thanks! The form has been submitted.' : 'Takk! Skjemaet er sendt inn.',
         error: '',
       })
     } catch (error) {
@@ -1457,6 +1909,9 @@ function FormPage() {
               messageColor:
                 typeof existingDetail?.messageColor === 'string' ? existingDetail.messageColor : '',
               messageBold: Boolean(existingDetail?.messageBold),
+              historyCategory: SELECT_OPTION_HISTORY_CATEGORIES.includes(existingDetail?.historyCategory)
+                ? existingDetail.historyCategory
+                : 'normal',
             }
 
             return accumulator
@@ -1491,6 +1946,11 @@ function FormPage() {
                         ? existingDetail.messageColor
                         : '',
                     messageBold: Boolean(existingDetail?.messageBold),
+                    historyCategory: SELECT_OPTION_HISTORY_CATEGORIES.includes(
+                      existingDetail?.historyCategory,
+                    )
+                      ? existingDetail.historyCategory
+                      : 'normal',
                   }
 
                   return accumulator
@@ -1501,6 +1961,7 @@ function FormPage() {
             ...question,
             type: value,
             required: value === 'section' ? false : question.required,
+            includeInReview: value === 'section' ? false : question.includeInReview,
             imageUrl: question.imageUrl,
             imagePreviewUrl: question.imagePreviewUrl,
             imageFile: question.imageFile,
@@ -1586,6 +2047,9 @@ function FormPage() {
           messageColor:
             typeof currentDetail?.messageColor === 'string' ? currentDetail.messageColor : '',
           messageBold: Boolean(currentDetail?.messageBold),
+          historyCategory: SELECT_OPTION_HISTORY_CATEGORIES.includes(currentDetail?.historyCategory)
+            ? currentDetail.historyCategory
+            : 'normal',
           [key]: value,
         }
 
@@ -1848,22 +2312,25 @@ function FormPage() {
   }
 
   function renderQuestionLead(question) {
+    const localizedLabel = translateText(question.label)
+    const localizedHelp = translateText(question.placeholder)
+
     return (
       <>
         <div className="question-copy">
           <span className="question-label">
-            {question.label}
+            {localizedLabel}
             {!question.required ? (
-              <span className="question-optional-note"> (ikke obligatorisk)</span>
+              <span className="question-optional-note">{publicCopy.optionalNote}</span>
             ) : null}
           </span>
         </div>
         {question.imageUrl ? (
-          renderQuestionImage(question.imageUrl, question.label, question.imageZoom)
+          renderQuestionImage(question.imageUrl, localizedLabel, question.imageZoom)
         ) : null}
         {question.placeholder ? (
           <small className="question-help" style={getHelpTextStyle(question)}>
-            {question.placeholder}
+            {localizedHelp}
           </small>
         ) : null}
       </>
@@ -1871,15 +2338,18 @@ function FormPage() {
   }
 
   function renderSectionHeading(question) {
+    const localizedLabel = translateText(question.label)
+    const localizedHelp = translateText(question.placeholder)
+
     return (
       <div className="form-section-heading">
-        <h3>{question.label}</h3>
+        <h3>{localizedLabel}</h3>
         {question.imageUrl ? (
-          renderQuestionImage(question.imageUrl, question.label, question.imageZoom)
+          renderQuestionImage(question.imageUrl, localizedLabel, question.imageZoom)
         ) : null}
         {question.placeholder ? (
           <small className="question-help" style={getHelpTextStyle(question)}>
-            {question.placeholder}
+            {localizedHelp}
           </small>
         ) : null}
       </div>
@@ -1973,6 +2443,115 @@ function FormPage() {
   }
 
   const selectedSubmission = submissions.find((submission) => submission.id === selectedSubmissionId)
+  const reviewQuestions = formData.questions.filter(
+    (question) => !isSectionQuestion(question) && Boolean(question.includeInReview),
+  )
+  const selectedSubmissionAnswerEntries = selectedSubmission
+    ? getOrderedAnswerEntries(selectedSubmission.answers || {}, reviewQuestions, {
+        includeRemainingAnswers: false,
+      })
+    : []
+  const hasPendingReviewDecisions = selectedSubmissionAnswerEntries.some(
+    ([answerKey]) => !String(reviewDraftStatuses[answerKey] || '').trim(),
+  )
+
+  function onSetReviewStatus(answerKey, nextStatus) {
+    setReviewDraftStatuses((previous) => ({
+      ...previous,
+      [answerKey]: nextStatus,
+    }))
+
+    if (nextStatus !== 'flagged') {
+      setReviewDraftComments((previous) => {
+        if (typeof previous[answerKey] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[answerKey]
+        return next
+      })
+    }
+  }
+
+  function onReviewCommentChange(answerKey, value) {
+    setReviewDraftComments((previous) => ({
+      ...previous,
+      [answerKey]: value,
+    }))
+  }
+
+  async function onSaveSubmissionReview() {
+    if (!selectedSubmission) {
+      return
+    }
+
+    const hasPendingDecisions = selectedSubmissionAnswerEntries.some(
+      ([answerKey]) => !String(reviewDraftStatuses[answerKey] || '').trim(),
+    )
+
+    if (hasPendingDecisions) {
+      setReviewSubmissionState({
+        saving: false,
+        error: 'Approve or flag every question before setting the submission as reviewed.',
+      })
+      return
+    }
+
+    setReviewSubmissionState({ saving: true, error: '' })
+
+    const flaggedAnswers = selectedSubmissionAnswerEntries
+      .filter(([answerKey]) => reviewDraftStatuses[answerKey] === 'flagged')
+      .map(([answerKey]) => {
+        const value = selectedSubmission.answers?.[answerKey]
+        if (!String(value || '').trim()) {
+          return null
+        }
+
+        return {
+          answerKey,
+          label: getAnswerDisplayLabel(answerKey, selectedSubmission.answers, formData.questions),
+          value: isStorageImagePath(value) ? String(value) : String(value || ''),
+          comment: String(reviewDraftComments[answerKey] || '').trim(),
+        }
+      })
+      .filter(Boolean)
+
+    try {
+      await updateDoc(doc(db, 'formSubmissions', selectedSubmission.id), {
+        flaggedAnswers,
+        status: 'reviewed',
+        statusUpdatedBy: user?.email || 'admin',
+        statusUpdatedAt: serverTimestamp(),
+        reviewedAt: serverTimestamp(),
+      })
+
+      setSubmissions((previous) =>
+        previous.map((submission) =>
+          submission.id === selectedSubmission.id
+            ? {
+                ...submission,
+                flaggedAnswers,
+                status: 'reviewed',
+                statusUpdatedBy: user?.email || 'admin',
+                statusUpdatedAt: new Date(),
+                reviewedAt: new Date(),
+              }
+            : submission,
+        ),
+      )
+
+      setReviewSubmissionState({ saving: false, error: '' })
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      setReviewSubmissionState({
+        saving: false,
+        error:
+          error?.code === 'permission-denied'
+            ? `Could not save the review${code}. Firestore rules do not allow this action.`
+            : `Could not save the review${code}.`,
+      })
+    }
+  }
 
   function renderQuestionInput(question) {
     const value = answers[question.id] || ''
@@ -1982,7 +2561,7 @@ function FormPage() {
         <textarea
           id={question.id}
           value={value}
-          placeholder={getInputPlaceholder(question)}
+          placeholder={getLocalizedInputPlaceholder(question)}
           required={question.required}
           rows={4}
           onChange={(event) => onAnswerChange(question.id, event.target.value)}
@@ -1993,7 +2572,9 @@ function FormPage() {
     if (question.type === 'select') {
       const detailValue = selectDetailAnswers[question.id] || ''
       const selectedBehavior = getSelectOptionBehavior(question, value)
-      const detailPrompt = selectedBehavior.text.trim() || 'Beskriv nærmere'
+      const detailPrompt = selectedBehavior.text.trim()
+        ? translateText(selectedBehavior.text)
+        : publicCopy.describeMore
       const detailFile = selectDetailFiles[question.id] || null
       const detailPreview = selectDetailPreviews[question.id] || ''
       const detailFileInputId = `${question.id}-detail-camera-input`
@@ -2035,10 +2616,10 @@ function FormPage() {
               }
             }}
           >
-            <option value="">Velg</option>
+            <option value="">{publicCopy.select}</option>
             {(question.options || []).map((option) => (
               <option key={option} value={option}>
-                {option}
+                {translateText(option)}
               </option>
             ))}
           </select>
@@ -2047,7 +2628,7 @@ function FormPage() {
               className="field-help select-detail-message"
               style={getSelectMessageStyle(selectedBehavior)}
             >
-              {selectedBehavior.text}
+              {translateText(selectedBehavior.text)}
             </p>
           ) : null}
           {selectedBehavior.kind === 'input' && value ? (
@@ -2057,7 +2638,7 @@ function FormPage() {
                 id={getSelectDetailAnswerKey(question.id)}
                 type="text"
                 value={detailValue}
-                placeholder="Skriv her"
+                placeholder={publicCopy.writeHere}
                 required
                 onChange={(event) =>
                   setSelectDetailAnswers((previous) => ({
@@ -2078,7 +2659,7 @@ function FormPage() {
                 className="ghost camera-upload-button"
                 onClick={() => document.getElementById(detailFileInputId)?.click()}
               >
-                {detailFile ? 'Last opp nytt bilde' : 'Ta bilde'}
+                {detailFile ? publicCopy.uploadNewPhoto : publicCopy.takePhoto}
               </button>
               <input
                 id={detailFileInputId}
@@ -2094,7 +2675,10 @@ function FormPage() {
               />
               {detailPreview ? (
                 <div className="camera-upload-preview">
-                  <img src={detailPreview} alt={`${question.label} bilde`} />
+                  <img
+                    src={detailPreview}
+                    alt={`${translateText(question.label)} ${displayLanguage === 'en' ? 'image' : 'bilde'}`}
+                  />
                 </div>
               ) : null}
               {detailFile ? <small>Valgt: {detailFile.name}</small> : null}
@@ -2129,7 +2713,9 @@ function FormPage() {
               }
             }}
           >
-            <option value="">{loadingLocations ? 'Laster lokasjoner...' : 'Velg lokasjon'}</option>
+            <option value="">
+              {loadingLocations ? publicCopy.loadingLocations : publicCopy.chooseLocation}
+            </option>
             {availableLocations.map((location) => {
               const locationName = String(location.name || '').trim()
               if (!locationName) {
@@ -2141,19 +2727,17 @@ function FormPage() {
                 </option>
               )
             })}
-            <option value={LOCATION_OTHER_VALUE}>Annet</option>
+            <option value={LOCATION_OTHER_VALUE}>{publicCopy.other}</option>
           </select>
           {!loadingLocations && !hasAvailableLocations ? (
-            <small className="question-help">
-              Ingen lagrede lokasjoner funnet. Velg &quot;Annet&quot; for å skrive inn manuelt.
-            </small>
+            <small className="question-help">{publicCopy.noLocationsHelp}</small>
           ) : null}
           {value === LOCATION_OTHER_VALUE ? (
             <input
               id={`${question.id}-other`}
               type="text"
               value={otherValue}
-              placeholder={getInputPlaceholder(question, 'Skriv inn lokasjon')}
+              placeholder={getLocalizedInputPlaceholder(question, publicCopy.enterLocation)}
               required={question.required}
               onChange={(event) =>
                 setLocationOtherAnswers((previous) => ({
@@ -2178,7 +2762,7 @@ function FormPage() {
             className="ghost camera-upload-button"
             onClick={() => document.getElementById(fileInputId)?.click()}
           >
-            {cameraFiles[question.id] ? 'Last opp nytt bilde' : 'Ta bilde'}
+            {cameraFiles[question.id] ? publicCopy.uploadNewPhoto : publicCopy.takePhoto}
           </button>
           <input
             id={fileInputId}
@@ -2194,7 +2778,10 @@ function FormPage() {
           />
           {cameraPreview ? (
             <div className="camera-upload-preview">
-              <img src={cameraPreview} alt={`${question.label} bilde`} />
+              <img
+                src={cameraPreview}
+                alt={`${translateText(question.label)} ${displayLanguage === 'en' ? 'image' : 'bilde'}`}
+              />
             </div>
           ) : null}
           {cameraFiles[question.id] ? (
@@ -2210,7 +2797,7 @@ function FormPage() {
           id={question.id}
           type="text"
           value={value}
-          placeholder={getInputPlaceholder(question, 'Fullt navn')}
+          placeholder={getLocalizedInputPlaceholder(question, publicCopy.fullName)}
           autoComplete="name"
           required={question.required}
           onChange={(event) => onAnswerChange(question.id, event.target.value)}
@@ -2224,7 +2811,7 @@ function FormPage() {
           id={question.id}
           type="email"
           value={value}
-          placeholder={getInputPlaceholder(question, 'E-postadresse')}
+          placeholder={getLocalizedInputPlaceholder(question, publicCopy.emailAddress)}
           autoComplete="email"
           required={question.required}
           onChange={(event) => onAnswerChange(question.id, event.target.value)}
@@ -2237,7 +2824,7 @@ function FormPage() {
         id={question.id}
         type={question.type || 'text'}
         value={value}
-        placeholder={getInputPlaceholder(question)}
+        placeholder={getLocalizedInputPlaceholder(question)}
         required={question.required}
         onChange={(event) => onAnswerChange(question.id, event.target.value)}
       />
@@ -2287,6 +2874,9 @@ function FormPage() {
   const visibleSubmissions = selectedSubmissionDay
     ? submissions.filter((submission) => getSubmissionDayKey(submission.submittedAt) === selectedSubmissionDay)
     : submissions
+  const flaggedSubmissions = submissions.filter(
+    (submission) => Array.isArray(submission.flaggedAnswers) && submission.flaggedAnswers.length > 0,
+  )
   const submissionsByLocation = visibleSubmissions
     .reduce((accumulator, submission) => {
       const location = getSubmissionLocation(submission.answers, formData.questions) || 'Ukjent lokasjon'
@@ -2302,7 +2892,12 @@ function FormPage() {
   const analysisQuestions = formData.questions.filter(
     (question) => !isSectionQuestion(question) && Boolean(question.includeInAnalysis),
   )
+  const visibleHistoryQuestions =
+    historyShowAllQuestions
+      ? analysisQuestions
+      : analysisQuestions.filter((question) => selectedHistoryQuestionIds.includes(question.id))
   const locationOrder = availableLocations.map((location) => String(location.name || '').trim()).filter(Boolean)
+  const parsedHistorySubmissionLimit = Math.max(1, Number.parseInt(historySubmissionLimit, 10) || 3)
   const historyByLocation = submissions
     .reduce((accumulator, submission) => {
       const location = getSubmissionLocation(submission.answers, formData.questions) || 'Ukjent lokasjon'
@@ -2314,11 +2909,13 @@ function FormPage() {
   const historyRows = Array.from(historyByLocation.entries())
     .map(([location, items]) => ({
       location,
-      items: items.sort((a, b) => {
-        const aSeconds = a.submittedAt?.seconds || 0
-        const bSeconds = b.submittedAt?.seconds || 0
-        return bSeconds - aSeconds
-      }),
+      items: items
+        .sort((a, b) => {
+          const aSeconds = a.submittedAt?.seconds || 0
+          const bSeconds = b.submittedAt?.seconds || 0
+          return bSeconds - aSeconds
+        })
+        .slice(0, parsedHistorySubmissionLimit),
     }))
     .sort((a, b) => {
       const aIndex = locationOrder.indexOf(a.location)
@@ -2334,13 +2931,33 @@ function FormPage() {
       }
       return a.location.localeCompare(b.location, 'nb')
     })
+  const visibleHistoryRows =
+    historyShowAllLocations
+      ? historyRows
+      : historyRows.filter((row) => selectedHistoryLocations.includes(row.location))
+  const historySubmissionSlots = Array.from(
+    { length: parsedHistorySubmissionLimit },
+    (_, index) => index,
+  )
   const receiptAnswerEntries = getOrderedAnswerEntries(receiptSubmission?.answers || {}, formData.questions)
-  const heroEyebrow = isReceiptPage ? 'Kvittering' : 'Skjema'
-  const heroTitle = isReceiptPage ? `Takk, ${formData.title} er sendt inn` : formData.title
+  const heroEyebrow = isReceiptPage ? publicCopy.receiptEyebrow : publicCopy.formEyebrow
+  const localizedFormTitle = translateText(formData.title)
+  const localizedFormDescription = translateText(formData.description)
+  const heroTitle = isReceiptPage
+    ? `${publicCopy.receiptTitlePrefix} ${localizedFormTitle} ${publicCopy.receiptTitleSuffix}`
+    : localizedFormTitle
   const heroLead = isReceiptPage
-    ? 'Her er en kopi av akkurat denne innsendingen.'
-    : formData.description
-  const showPublicFacingHeader = !isSubmissionsView && !isEditPage && !isHistoryView
+    ? publicCopy.receiptLead
+    : localizedFormDescription
+  const showPublicFacingHeader =
+    !isSubmissionsView && !isEditPage && !isHistoryView && !isFlaggedView && !isReviewView
+
+  useEffect(() => {
+    const validLocations = new Set(historyRows.map((row) => row.location))
+    setSelectedHistoryLocations((previous) =>
+      previous.filter((location) => validLocations.has(location)),
+    )
+  }, [historyRows])
 
   let publicQuestionOrder = 0
 
@@ -2350,18 +2967,33 @@ function FormPage() {
         isHistoryView ? 'history-page' : ''
       }`}
     >
-      {!isStandalonePublicForm && !isSubmissionsView && !isEditPage && !isHistoryView ? (
+      {isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView ? (
+        <Link className="admin-login-link" to="/skjema">
+          Tilbake til hovedmeny
+        </Link>
+      ) : !isStandalonePublicForm &&
+        !isSubmissionsView &&
+        !isEditPage &&
+        !isHistoryView &&
+        !isFlaggedView &&
+        !isReviewView ? (
         <Link className="admin-login-link" to="/skjema">
           Tilbake til alle skjema
         </Link>
       ) : null}
       {isReceiptPage && !isReceiptReady ? (
         <section className="form-entry">
-          <p>Laster kvittering...</p>
+          <p>{publicCopy.loadingReceipt}</p>
         </section>
-      ) : !isSubmissionsView && !isEditPage && !isHistoryView && !isReceiptPage && !isPublicFormReady ? (
+      ) : !isSubmissionsView &&
+        !isEditPage &&
+        !isHistoryView &&
+        !isFlaggedView &&
+        !isReviewView &&
+        !isReceiptPage &&
+        !isPublicFormReady ? (
         <section className="form-entry">
-          <p>Laster skjema...</p>
+          <p>{publicCopy.loadingForm}</p>
         </section>
       ) : (
         <>
@@ -2370,6 +3002,43 @@ function FormPage() {
               <p className="eyebrow">{heroEyebrow}</p>
               <h1>{heroTitle}</h1>
               <p className="lead">{heroLead}</p>
+              {!isReceiptPage ? (
+                <div className="public-form-language-bar">
+                  <span className="public-form-language-label">{publicCopy.languageLabel}</span>
+                  <div className="public-form-language-toggle" role="group" aria-label={publicCopy.languageLabel}>
+                    <button
+                      type="button"
+                      className={displayLanguage === 'no' ? 'is-active' : ''}
+                      onClick={() => setDisplayLanguage('no')}
+                    >
+                      {publicCopy.norwegian}
+                    </button>
+                    <button
+                      type="button"
+                      className={displayLanguage === 'en' ? 'is-active' : ''}
+                      onClick={() => setDisplayLanguage('en')}
+                    >
+                      {publicCopy.english}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {!isReceiptPage && translationState.loading ? (
+                <div className="public-form-translation-loader" role="status" aria-live="polite">
+                  <div className="public-form-translation-spinner" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="public-form-translation-copy">
+                    <strong>{publicCopy.translating}</strong>
+                    <span>{publicCopy.translatingHint}</span>
+                  </div>
+                </div>
+              ) : null}
+              {!isReceiptPage && translationState.error ? (
+                <p className="public-form-language-status is-error">{translationState.error}</p>
+              ) : null}
             </header>
           ) : null}
 
@@ -2424,11 +3093,11 @@ function FormPage() {
                 </>
               ) : null}
             </section>
-          ) : !isSubmissionsView && !isEditPage && !isHistoryView ? (
+          ) : !isSubmissionsView && !isEditPage && !isHistoryView && !isFlaggedView && !isReviewView ? (
             <section className="form-entry">
               <div className="form-entry-header">
                 <button type="button" className="ghost reset-form-button" onClick={resetAllAnswers}>
-                  Nullstill alle svar
+                  {publicCopy.resetAnswers}
                 </button>
               </div>
               <form key={formInstanceKey} onSubmit={onSubmit} className="dynamic-form">
@@ -2464,7 +3133,7 @@ function FormPage() {
                     }`}
                   >
                     <p className="self-declaration-text">
-                      {formData.selfDeclarationText || 'Jeg bekrefter opplysningene i skjemaet.'}
+                      {translateText(formData.selfDeclarationText) || publicCopy.selfDeclarationFallback}
                     </p>
                     <label
                       className="checkbox-inline self-declaration-check"
@@ -2476,7 +3145,7 @@ function FormPage() {
                         checked={selfDeclarationAccepted}
                         onChange={(event) => setSelfDeclarationAccepted(event.target.checked)}
                       />
-                      Jeg bekrefter egenerklæringen
+                      {publicCopy.confirmSelfDeclaration}
                     </label>
                   </div>
                 ) : null}
@@ -2488,26 +3157,31 @@ function FormPage() {
                   className="cta"
                   disabled={submitState.submitting || !isPublicFormReady}
                 >
-                  {submitState.submitting ? 'Sender...' : 'Send skjema'}
+                  {submitState.submitting ? publicCopy.sendingForm : publicCopy.sendForm}
                 </button>
               </form>
             </section>
           ) : null}
 
-          {submitOverlay.open && !isReceiptPage && !isSubmissionsView && !isEditPage ? (
+          {submitOverlay.open &&
+          !isReceiptPage &&
+          !isSubmissionsView &&
+          !isEditPage &&
+          !isFlaggedView &&
+          !isReviewView ? (
             <div className="submit-overlay" role="status" aria-live="polite" aria-busy={submitOverlay.status === 'submitting'}>
               <div className={`submit-overlay-card is-${submitOverlay.status}`}>
                 {submitOverlay.status === 'submitting' ? (
                   <>
                     <div className="submit-overlay-spinner" aria-hidden="true" />
-                    <p>Sender skjema...</p>
+                    <p>{publicCopy.sendingForm}</p>
                   </>
                 ) : (
                   <>
                     <div className="submit-overlay-check" aria-hidden="true">
                       ✓
                     </div>
-                    <p>Skjema sendt inn</p>
+                    <p>{publicCopy.formSent}</p>
                   </>
                 )}
               </div>
@@ -2516,14 +3190,14 @@ function FormPage() {
         </>
       )}
 
-      {(isEditPage || isSubmissionsView || isHistoryView) && !isAdmin && !loading ? (
+      {(isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView) && !isAdmin && !loading ? (
         <section className="admin-login-line">
           <p className="forms-error">Kun admin har tilgang til denne siden.</p>
         </section>
       ) : null}
 
-      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView) ? (
-        <section className={isEditPage || isSubmissionsView || isHistoryView ? 'admin-edit-shell' : 'admin-box'}>
+      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView) ? (
+        <section className={isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView ? 'admin-edit-shell' : 'admin-box'}>
           {loading ? <p>Kontrollerer innlogging...</p> : null}
           {error ? <p className="forms-error">{error}</p> : null}
 
@@ -2654,6 +3328,28 @@ function FormPage() {
                               <div key={`${question.id}-${option}`} className="select-option-detail-row">
                                 <div className="select-option-detail-head">
                                   <p className="select-option-detail-label">{option}</p>
+                                  <label
+                                    className="select-option-category-inline"
+                                    htmlFor={`q-select-category-${index}-${option}`}
+                                  >
+                                    <span>Kategori:</span>
+                                    <select
+                                      id={`q-select-category-${index}-${option}`}
+                                      value={optionDetail.historyCategory || 'normal'}
+                                      onChange={(event) =>
+                                        onEditorSelectOptionDetailChange(
+                                          index,
+                                          option,
+                                          'historyCategory',
+                                          event.target.value,
+                                        )
+                                      }
+                                    >
+                                      <option value="normal">Vanlig</option>
+                                      <option value="orange">Oransje</option>
+                                      <option value="red">Rød</option>
+                                    </select>
+                                  </label>
                                   <label
                                     className="checkbox-inline select-option-detail-toggle"
                                     htmlFor={`q-select-detail-toggle-${index}-${option}`}
@@ -2858,31 +3554,65 @@ function FormPage() {
                             />
                             Obligatorisk
                           </label>
-                          <label className="checkbox-inline" htmlFor={`q-analysis-${index}`}>
-                            <input
-                              id={`q-analysis-${index}`}
-                              type="checkbox"
-                              checked={Boolean(question.includeInAnalysis)}
-                              onChange={(event) =>
-                                onEditorQuestionChange(index, 'includeInAnalysis', event.target.checked)
-                              }
-                            />
-                            Inkluder i analyse
-                          </label>
-                          {question.includeInAnalysis ? (
-                            <label className="field-block analysis-label-field" htmlFor={`q-analysis-label-${index}`}>
-                              <span>Kort tekst i historikk</span>
+                          <div className="editor-inline-setting-row">
+                            <label className="checkbox-inline" htmlFor={`q-analysis-${index}`}>
                               <input
-                                id={`q-analysis-label-${index}`}
-                                type="text"
-                                value={question.analysisLabel || ''}
-                                placeholder={question.label}
+                                id={`q-analysis-${index}`}
+                                type="checkbox"
+                                checked={Boolean(question.includeInAnalysis)}
                                 onChange={(event) =>
-                                  onEditorQuestionChange(index, 'analysisLabel', event.target.value)
+                                  onEditorQuestionChange(index, 'includeInAnalysis', event.target.checked)
                                 }
                               />
+                              Inkluder i analyse
                             </label>
-                          ) : null}
+                            {question.includeInAnalysis ? (
+                              <label
+                                className="field-block analysis-label-field inline-setting-field"
+                                htmlFor={`q-analysis-label-${index}`}
+                              >
+                                <span>Kort tekst i analyse</span>
+                                <input
+                                  id={`q-analysis-label-${index}`}
+                                  type="text"
+                                  value={question.analysisLabel || ''}
+                                  placeholder={question.label}
+                                  onChange={(event) =>
+                                    onEditorQuestionChange(index, 'analysisLabel', event.target.value)
+                                  }
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                          <div className="editor-inline-setting-row">
+                            <label className="checkbox-inline" htmlFor={`q-review-${index}`}>
+                              <input
+                                id={`q-review-${index}`}
+                                type="checkbox"
+                                checked={Boolean(question.includeInReview)}
+                                onChange={(event) =>
+                                  onEditorQuestionChange(index, 'includeInReview', event.target.checked)
+                                }
+                              />
+                              Skal vurderes
+                            </label>
+                            {question.includeInReview ? (
+                              <label
+                                className="field-block inline-setting-field"
+                                htmlFor={`q-review-help-${index}`}
+                              >
+                                <span>Info til vurdering</span>
+                                <input
+                                  id={`q-review-help-${index}`}
+                                  type="text"
+                                  value={question.reviewHelpText || ''}
+                                  onChange={(event) =>
+                                    onEditorQuestionChange(index, 'reviewHelpText', event.target.value)
+                                  }
+                                />
+                              </label>
+                            ) : null}
+                          </div>
                         </>
                       ) : (
                         <>
@@ -3109,82 +3839,147 @@ function FormPage() {
                 {!loadingSubmissions && submissions.length > 0 && visibleSubmissions.length === 0 ? (
                   <p>Ingen innsendinger for valgt dag.</p>
                 ) : null}
-                {!loadingSubmissions && submissionsByLocation.length > 0 ? (
-                  <div className="location-submission-groups">
-                    {submissionsByLocation.map((group) => (
-                      <section key={group.location} className="location-submission-group">
-                        <div className="location-submission-header">
+                {!loadingSubmissions && visibleSubmissions.length > 0 ? (
+                  <div className="submissions-table-wrap">
+                    <table className="submissions-table">
+                      <thead>
+                        <tr>
+                          <th>Sendt inn</th>
+                          <th>Lokasjon</th>
+                          <th>Navn</th>
+                          <th>Kvittering</th>
+                          <th>Status</th>
+                          <th>Handlinger</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleSubmissions.map((submission) => {
+                          const deleteState = deleteSubmissionState[submission.id] || {}
+                          const flaggedCount = Array.isArray(submission.flaggedAnswers)
+                            ? submission.flaggedAnswers.length
+                            : 0
+
+                          return (
+                            <tr key={submission.id}>
+                              <td>
+                                <strong>{getClockPart(submission.submittedAt)}</strong>
+                                <br />
+                                <small>
+                                  {formatSubmissionDayLabel(
+                                    getSubmissionDayKey(submission.submittedAt),
+                                  )}
+                                </small>
+                              </td>
+                              <td>{getSubmissionLocation(submission.answers, formData.questions)}</td>
+                              <td>{getSubmissionName(submission.answers, formData.questions)}</td>
+                              <td>
+                                {submission.receiptToken ? (
+                                  <Link
+                                    className="ghost"
+                                    to={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Vis kvittering
+                                  </Link>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                              <td>
+                                <span className={`submission-status-badge is-${String(submission.status || 'awaiting-review').replace(/\s+/g, '-').toLowerCase()}`}>
+                                  {getSubmissionStatusLabel(submission.status)}
+                                </span>
+                                {flaggedCount > 0 ? (
+                                  <small className="submission-flag-note">
+                                    {flaggedCount} flagget
+                                  </small>
+                                ) : null}
+                              </td>
+                              <td>
+                                <div className="submission-table-actions">
+                                  <Link
+                                    className="ghost"
+                                    to={`/skjema/${activeFormSlug}/review/${submission.id}`}
+                                  >
+                                    Review
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    className="ghost danger-button"
+                                    onClick={() => onDeleteSubmission(submission.id)}
+                                    disabled={deleteState.deleting}
+                                  >
+                                    {deleteState.deleting ? 'Sletter...' : 'Slett'}
+                                  </button>
+                                  {deleteState.error ? (
+                                    <small className="forms-error">{deleteState.error}</small>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+              </div>
+            ) : null}
+
+            {isFlaggedView ? (
+              <div className="responses-box submissions-overview" id="flagged-section">
+                <h3>Flagget</h3>
+                {loadingSubmissions ? <p>Laster flaggede svar...</p> : null}
+                {!loadingSubmissions && flaggedSubmissions.length === 0 ? (
+                  <p>Ingen flaggede svar ennå.</p>
+                ) : null}
+                {!loadingSubmissions && flaggedSubmissions.length > 0 ? (
+                  <div className="flagged-submission-list">
+                    {flaggedSubmissions.map((submission) => (
+                      <article key={submission.id} className="response-card flagged-submission-card">
+                        <div className="flagged-submission-header">
                           <div>
-                            <h4>{group.location}</h4>
-                            <p>{group.items.length} innsendinger</p>
+                            <h4>{getSubmissionLocation(submission.answers, formData.questions)}</h4>
+                            <p>
+                              {getSubmissionName(submission.answers, formData.questions)} |{' '}
+                              {formatTime(submission.submittedAt)}
+                            </p>
+                          </div>
+                          <div className="submission-table-actions">
+                            {submission.receiptToken ? (
+                              <Link
+                                className="ghost"
+                                to={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Vis kvittering
+                              </Link>
+                            ) : null}
+                            <Link
+                              className="ghost"
+                              to={`/skjema/${activeFormSlug}/review/${submission.id}`}
+                            >
+                              Review
+                            </Link>
                           </div>
                         </div>
-
-                        <div className="location-submission-list">
-                          {group.items.map((submission) => {
-                            const deleteState = deleteSubmissionState[submission.id] || {}
-
-                            return (
-                              <article
-                                key={submission.id}
-                                className="response-card submission-answer-card"
-                              >
-                                <div className="submission-answer-meta">
-                                  <div>
-                                    <strong>{getClockPart(submission.submittedAt)}</strong>
-                                    <p>{getSubmissionName(submission.answers, formData.questions)}</p>
-                                  </div>
-                                  <div className="submission-answer-actions">
-                                    <small>
-                                      {formatSubmissionDayLabel(
-                                        getSubmissionDayKey(submission.submittedAt),
-                                      )}
-                                    </small>
-                                    {submission.receiptToken ? (
-                                      <Link
-                                        className="ghost"
-                                        to={`/skjema/${activeFormSlug}/kvittering/${submission.receiptToken}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        Vis kvittering
-                                      </Link>
-                                    ) : null}
-                                    <button
-                                      type="button"
-                                      className="ghost danger-button"
-                                      onClick={() => onDeleteSubmission(submission.id)}
-                                      disabled={deleteState.deleting}
-                                    >
-                                      {deleteState.deleting ? 'Sletter...' : 'Slett innsending'}
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {deleteState.error ? (
-                                  <p className="forms-error">{deleteState.error}</p>
-                                ) : null}
-
-                                <div className="response-grid submission-answer-grid">
-                                  {Object.entries(submission.answers || {}).map(([key, value]) => (
-                                    <p key={`${submission.id}-${key}`}>
-                                      <strong>
-                                        {getAnswerDisplayLabel(
-                                          key,
-                                          submission.answers,
-                                          formData.questions,
-                                        )}
-                                        :
-                                      </strong>{' '}
-                                      {isStorageImagePath(value) ? 'Bilde vedlagt' : String(value || '-')}
-                                    </p>
-                                  ))}
-                                </div>
-                              </article>
-                            )
-                          })}
+                        <div className="flagged-answer-list">
+                          {(submission.flaggedAnswers || []).map((item) => (
+                            <p key={`${submission.id}-${item.answerKey}`}>
+                              <strong>{item.label}:</strong>{' '}
+                              {isStorageImagePath(item.value) ? 'Bilde vedlagt' : String(item.value || '-')}
+                              {item.comment ? (
+                                <small className="flagged-answer-comment">
+                                  Kommentar: {item.comment}
+                                </small>
+                              ) : null}
+                            </p>
+                          ))}
                         </div>
-                      </section>
+                      </article>
                     ))}
                   </div>
                 ) : null}
@@ -3193,64 +3988,449 @@ function FormPage() {
 
             {isHistoryView ? (
               <div className="history-overview" id="history-section">
-                <h3>Historikk</h3>
-                {loadingSubmissions ? <p>Laster historikk...</p> : null}
+                <div className="history-header">
+                  <h3>Analyse</h3>
+                  <div className="history-controls">
+                    <label className="field-block history-days-field" htmlFor="history-submission-limit">
+                      <span>Vis siste [x] innsendinger</span>
+                      <input
+                        id="history-submission-limit"
+                        type="number"
+                        min="1"
+                        inputMode="numeric"
+                        value={historySubmissionLimit}
+                        onChange={(event) => setHistorySubmissionLimit(event.target.value)}
+                      />
+                    </label>
+                    {historyRows.length > 0 ? (
+                      <div className="history-filter-bar">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => setHistoryLocationFilterOpen((previous) => !previous)}
+                          aria-expanded={historyLocationFilterOpen}
+                          aria-controls="history-location-filter"
+                        >
+                          Filtrer lokasjoner
+                          {!historyShowAllLocations && selectedHistoryLocations.length > 0
+                            ? ` (${selectedHistoryLocations.length})`
+                            : ''}
+                        </button>
+                        {historyLocationFilterOpen ? (
+                          <div className="history-filter-panel" id="history-location-filter">
+                            <div className="history-filter-actions">
+                              <button
+                                type="button"
+                                className="ghost"
+                                onClick={() => {
+                                  setHistoryShowAllLocations(true)
+                                  setSelectedHistoryLocations([])
+                                }}
+                              >
+                                Vis alle
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost"
+                                onClick={() => {
+                                  setHistoryShowAllLocations(false)
+                                  setSelectedHistoryLocations([])
+                                }}
+                              >
+                                Fjern alle
+                              </button>
+                            </div>
+                            {historyRows.map((row) => (
+                              <label
+                                key={`history-location-filter-${row.location}`}
+                                className="checkbox-inline history-filter-option"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={
+                                    historyShowAllLocations ||
+                                    selectedHistoryLocations.includes(row.location)
+                                  }
+                                  onChange={(event) => {
+                                    setSelectedHistoryLocations((previous) => {
+                                      const allLocations = historyRows.map((item) => item.location)
+                                      const base = historyShowAllLocations ? allLocations : previous
+
+                                      if (event.target.checked) {
+                                        const next = base.includes(row.location)
+                                          ? base
+                                          : [...base, row.location]
+                                        setHistoryShowAllLocations(next.length === allLocations.length)
+                                        return next
+                                      }
+
+                                      const next = base.filter((location) => location !== row.location)
+                                      setHistoryShowAllLocations(false)
+                                      return next
+                                    })
+                                  }}
+                                />
+                                {row.location}
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {analysisQuestions.length > 0 ? (
+                      <div className="history-filter-bar">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => setHistoryQuestionFilterOpen((previous) => !previous)}
+                          aria-expanded={historyQuestionFilterOpen}
+                          aria-controls="history-question-filter"
+                        >
+                          Filtrer spørsmål
+                          {!historyShowAllQuestions && selectedHistoryQuestionIds.length > 0
+                            ? ` (${selectedHistoryQuestionIds.length})`
+                            : ''}
+                        </button>
+                        {historyQuestionFilterOpen ? (
+                          <div className="history-filter-panel" id="history-question-filter">
+                            <div className="history-filter-actions">
+                              <button
+                                type="button"
+                                className="ghost"
+                                onClick={() => {
+                                  setHistoryShowAllQuestions(true)
+                                  setSelectedHistoryQuestionIds([])
+                                }}
+                              >
+                                Vis alle
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost"
+                                onClick={() => {
+                                  setHistoryShowAllQuestions(false)
+                                  setSelectedHistoryQuestionIds([])
+                                }}
+                              >
+                                Fjern alle
+                              </button>
+                            </div>
+                            {analysisQuestions.map((question) => (
+                              <label
+                                key={`history-filter-${question.id}`}
+                                className="checkbox-inline history-filter-option"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={
+                                    historyShowAllQuestions ||
+                                    selectedHistoryQuestionIds.includes(question.id)
+                                  }
+                                  onChange={(event) => {
+                                    setSelectedHistoryQuestionIds((previous) => {
+                                      const allIds = analysisQuestions.map((item) => item.id)
+                                      const base = historyShowAllQuestions ? allIds : previous
+
+                                      if (event.target.checked) {
+                                        const next = base.includes(question.id)
+                                          ? base
+                                          : [...base, question.id]
+                                        setHistoryShowAllQuestions(next.length === allIds.length)
+                                        return next
+                                      }
+
+                                      const next = base.filter((questionId) => questionId !== question.id)
+                                      setHistoryShowAllQuestions(false)
+                                      return next
+                                    })
+                                  }}
+                                />
+                                {question.analysisLabel || question.label}
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                {loadingSubmissions ? <p>Laster analyse...</p> : null}
                 {!loadingSubmissions && analysisQuestions.length === 0 ? (
                   <p>Ingen spørsmål er merket med "Inkluder i analyse" ennå.</p>
                 ) : null}
                 {!loadingSubmissions && analysisQuestions.length > 0 && historyRows.length === 0 ? (
-                  <p>Ingen innsendinger enda.</p>
+                  <p>Ingen innsendinger ennå.</p>
                 ) : null}
-                {!loadingSubmissions && analysisQuestions.length > 0 && historyRows.length > 0 ? (
-                  <div className="history-location-list">
-                    {historyRows.map((row) => (
-                      <section key={row.location} className="history-location-group">
-                        <h4>{row.location}</h4>
-                        <div className="history-table-wrap">
-                          <table className="history-table">
-                            <thead>
-                              <tr>
-                                <th>Spørsmål</th>
-                                {row.items.map((submission, index) => (
-                                  <th
-                                    key={`${row.location}-${submission.id}`}
-                                    className={index === 0 ? 'history-current-column' : ''}
-                                  >
-                                    <div className="history-cell-meta">
-                                      <strong>{index === 0 ? 'Nyeste' : `${index + 1}`}</strong>
-                                      <small>{getDatePart(submission.submittedAt)}</small>
-                                      <small>{getClockPart(submission.submittedAt)}</small>
-                                    </div>
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {analysisQuestions.map((question) => (
-                                <tr key={`${row.location}-${question.id}`}>
-                                  <th scope="row">{question.analysisLabel || question.label}</th>
-                                  {row.items.map((submission, submissionIndex) => {
-                                    const values = getHistoryAnswerValues(submission, question)
+                {!loadingSubmissions && analysisQuestions.length > 0 && visibleHistoryRows.length > 0 ? (
+                  <div className="history-table-wrap">
+                    <table className="history-table">
+                      <thead>
+                        <tr>
+                          <th rowSpan={2}>Spørsmål</th>
+                          {visibleHistoryRows.map((row) => (
+                            <th
+                              key={`history-location-${row.location}`}
+                              colSpan={historySubmissionSlots.length}
+                              className="history-location-heading"
+                            >
+                              {row.location}
+                            </th>
+                          ))}
+                        </tr>
+                        <tr>
+                          {visibleHistoryRows.flatMap((row) =>
+                            historySubmissionSlots.map((slotIndex) => {
+                              const submission = row.items[slotIndex]
+                              return (
+                                <th
+                                  key={`${row.location}-slot-${slotIndex}`}
+                                  className={slotIndex === 0 ? 'history-current-column' : ''}
+                                >
+                                  <div className="history-cell-meta">
+                                    <strong>{slotIndex === 0 ? 'Nyeste' : `${slotIndex + 1}`}</strong>
+                                    <small>
+                                      {submission ? getDatePart(submission.submittedAt) : '-'}
+                                    </small>
+                                    <small>
+                                      {submission ? getClockPart(submission.submittedAt) : '-'}
+                                    </small>
+                                  </div>
+                                </th>
+                              )
+                            }),
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleHistoryQuestions.map((question) => (
+                          <tr key={`history-question-${question.id}`}>
+                            <th scope="row">{question.analysisLabel || question.label}</th>
+                            {visibleHistoryRows.flatMap((row) =>
+                              historySubmissionSlots.map((slotIndex) => {
+                                const submission = row.items[slotIndex]
+                                const values = submission
+                                  ? getHistoryAnswerValues(submission, question)
+                                  : []
+                                const historyCellCategory = submission
+                                  ? getHistoryCellCategory(question, submission)
+                                  : ''
 
-                                    return (
-                                      <td
-                                        key={`${submission.id}-${question.id}`}
-                                        className={`history-cell ${
-                                          submissionIndex === 0 ? 'history-current-column' : ''
-                                        }`}
-                                      >
-                                        {values.length > 0 ? values.join(' | ') : '-'}
-                                      </td>
-                                    )
-                                  })}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </section>
-                    ))}
+                                return (
+                                  <td
+                                    key={`${row.location}-${question.id}-${slotIndex}`}
+                                    className={`history-cell ${
+                                      slotIndex === 0 ? 'history-current-column' : ''
+                                    } ${
+                                      historyCellCategory
+                                        ? `history-cell-${historyCellCategory}`
+                                        : ''
+                                    }`}
+                                  >
+                                    {values.length > 0 ? values.join(' | ') : '-'}
+                                  </td>
+                                )
+                              }),
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+                ) : null}
+                {!loadingSubmissions &&
+                analysisQuestions.length > 0 &&
+                historyRows.length > 0 &&
+                visibleHistoryRows.length === 0 ? (
+                  <p>Ingen lokasjoner er valgt i filteret.</p>
+                ) : null}
+                {!loadingSubmissions &&
+                analysisQuestions.length > 0 &&
+                visibleHistoryRows.length > 0 &&
+                visibleHistoryQuestions.length === 0 ? (
+                  <p>Ingen spørsmål er valgt i filteret.</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {isReviewView ? (
+              <div className="responses-box review-page" id="review-section">
+                <div className="review-page-header">
+                  <div>
+                    <h3>Review submission</h3>
+                    {selectedSubmission ? (
+                      <p>
+                        {getSubmissionLocation(selectedSubmission.answers, formData.questions)} |{' '}
+                        {getSubmissionName(selectedSubmission.answers, formData.questions)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="submission-modal-actions">
+                    <Link className="ghost" to={`/skjema/${activeFormSlug}/submissions`}>
+                      Back to submissions
+                    </Link>
+                    {selectedSubmission ? (
+                      <button
+                        type="button"
+                        className="cta"
+                        onClick={onSaveSubmissionReview}
+                        disabled={
+                          reviewSubmissionState.saving ||
+                          selectedSubmissionAnswerEntries.length === 0 ||
+                          hasPendingReviewDecisions
+                        }
+                      >
+                        {reviewSubmissionState.saving ? 'Saving...' : 'Set as reviewed'}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {loadingSubmissions ? <p>Loading submission...</p> : null}
+                {!loadingSubmissions && !selectedSubmission ? (
+                  <p>Could not find the submission.</p>
+                ) : null}
+                {selectedSubmission ? (
+                  <>
+                    <div className="receipt-meta review-meta-grid">
+                      <p>
+                        <strong>Submission:</strong> {selectedSubmission.id}
+                      </p>
+                      <p>
+                        <strong>Submitted:</strong> {formatTime(selectedSubmission.submittedAt)}
+                      </p>
+                      <p>
+                        <strong>Status:</strong> {getSubmissionStatusLabel(selectedSubmission.status)}
+                      </p>
+                    </div>
+
+                    {reviewSubmissionState.error ? (
+                      <p className="forms-error">{reviewSubmissionState.error}</p>
+                    ) : null}
+
+                    {reviewQuestions.length === 0 ? (
+                      <p>No questions are marked with "Should be reviewed" in this form.</p>
+                    ) : null}
+
+                    {reviewQuestions.length > 0 && selectedSubmissionAnswerEntries.length === 0 ? (
+                      <p>No review questions have answers in this submission.</p>
+                    ) : null}
+
+                    {selectedSubmissionAnswerEntries.length > 0 && hasPendingReviewDecisions ? (
+                      <p className="review-pending-note">
+                        Choose Approve or Flag for every question before setting the submission as reviewed.
+                      </p>
+                    ) : null}
+
+                    <div className="review-comparison-list">
+                      {selectedSubmissionAnswerEntries.map(([answerKey, value]) => {
+                        const imageUrl = isStorageImagePath(value)
+                          ? selectedSubmissionImageUrls[value] || ''
+                          : ''
+                        const question = getQuestionForAnswerKey(answerKey, formData.questions)
+                        const reviewStatus = reviewDraftStatuses[answerKey] || ''
+                        const isApproved = reviewStatus === 'approved'
+                        const isFlagged = reviewStatus === 'flagged'
+
+                        return (
+                          <article key={`${selectedSubmission.id}-${answerKey}`} className="review-comparison-row">
+                            <div className="review-comparison-panel">
+                              <p className="review-answer-label">
+                                {translateText(
+                                  getAnswerDisplayLabel(
+                                    answerKey,
+                                    selectedSubmission.answers,
+                                    formData.questions,
+                                  ),
+                                )}
+                              </p>
+                              <p className="review-panel-title">User answer</p>
+                              {imageUrl ? (
+                                <img
+                                  className="review-answer-image"
+                                  src={imageUrl}
+                                  alt={translateText(
+                                    getAnswerDisplayLabel(
+                                      answerKey,
+                                      selectedSubmission.answers,
+                                      formData.questions,
+                                    ),
+                                  )}
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <p className="review-answer-value">
+                                  {isStorageImagePath(value)
+                                    ? 'Loading image...'
+                                    : getReviewDisplayValue(
+                                        answerKey,
+                                        value,
+                                        question,
+                                        translateText,
+                                      )}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="review-comparison-panel">
+                              <p className="review-panel-title">Reference image</p>
+                              {question?.imageUrl ? (
+                                renderQuestionImage(
+                                  question.imageUrl,
+                                  `${translateText(question.label)} reference`,
+                                  question.imageZoom,
+                                )
+                              ) : (
+                                <p className="review-answer-value">No reference image</p>
+                              )}
+                            </div>
+
+                            <div className="review-flag-panel">
+                              {question?.reviewHelpText ? (
+                                <p className="review-help-text">{translateText(question.reviewHelpText)}</p>
+                              ) : null}
+                              <p className="review-panel-title">Review</p>
+                              <div className="review-action-row">
+                                <button
+                                  type="button"
+                                  className={`review-status-button is-approve ${
+                                    isApproved ? 'is-active' : ''
+                                  }`}
+                                  onClick={() => onSetReviewStatus(answerKey, 'approved')}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`review-status-button is-flag ${
+                                    isFlagged ? 'is-active' : ''
+                                  }`}
+                                  onClick={() => onSetReviewStatus(answerKey, 'flagged')}
+                                >
+                                  Flag
+                                </button>
+                              </div>
+                              {isFlagged ? (
+                                <label
+                                  className="field-block review-comment-field"
+                                  htmlFor={`review-comment-${answerKey}`}
+                                >
+                                  <span>Comment</span>
+                                  <textarea
+                                    id={`review-comment-${answerKey}`}
+                                    rows={4}
+                                    value={reviewDraftComments[answerKey] || ''}
+                                    onChange={(event) =>
+                                      onReviewCommentChange(answerKey, event.target.value)
+                                    }
+                                  />
+                                </label>
+                              ) : null}
+                            </div>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  </>
                 ) : null}
               </div>
             ) : null}

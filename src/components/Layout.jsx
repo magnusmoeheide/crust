@@ -19,10 +19,7 @@ const LOGO_CACHE_KEY = "crust-brand-logo-v1";
 
 function Layout() {
   const location = useLocation();
-  const isStandaloneFormPage =
-    /^\/skjema\/[^/]+$/.test(location.pathname) ||
-    /^\/skjema\/[^/]+\/kvittering\/[^/]+$/.test(location.pathname) ||
-    /^\/skjema\/[^/]+\/historikk$/.test(location.pathname);
+  const isStandaloneFormPage = /^\/skjema\/[^/]+(?:\/.*)?$/.test(location.pathname);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [logoSrc, setLogoSrc] = useState(() => {
     if (typeof window === "undefined") {
@@ -184,7 +181,7 @@ function Layout() {
       ) : null}
 
       <main className={`page-main ${isStandaloneFormPage ? "is-standalone-form" : ""}`}>
-        <Outlet />
+        <Outlet key={location.pathname} />
       </main>
 
       {!isStandaloneFormPage ? (
