@@ -111,7 +111,14 @@ function Forms() {
             return;
           }
 
-          if (Array.isArray(data?.flaggedAnswers) && data.flaggedAnswers.length > 0) {
+          const isCompletedFlaggedSubmission =
+            String(data?.flaggedStatus || "").trim().toLowerCase() === "complete";
+
+          if (
+            Array.isArray(data?.flaggedAnswers) &&
+            data.flaggedAnswers.length > 0 &&
+            !isCompletedFlaggedSubmission
+          ) {
             nextFlaggedCounts[formSlug] = (nextFlaggedCounts[formSlug] || 0) + 1;
           }
 
@@ -285,6 +292,14 @@ function Forms() {
 
   return (
     <div className="forms-page">
+      {isAdmin ? (
+        <form action="/admin" method="get">
+          <button type="submit" className="admin-login-link">
+            Tilbake til admin
+          </button>
+        </form>
+      ) : null}
+
       <header className="forms-hero">
         <p className="eyebrow">Skjemaer</p>
         <h1>Velg skjema</h1>
@@ -318,24 +333,6 @@ function Forms() {
                     </a>
                     <a
                       className="ghost"
-                      href={`/skjema/${form.slug}/flagget`}
-                    >
-                      Flagget ({flaggedCounts[form.slug] || 0})
-                    </a>
-                    <a
-                      className="ghost"
-                      href={`/skjema/${form.slug}/analyse`}
-                    >
-                      Analyse
-                    </a>
-                    <a
-                      className="ghost"
-                      href={`/skjema/${form.slug}/leveringsliste`}
-                    >
-                      Leverings-/bestillingsliste
-                    </a>
-                    <a
-                      className="ghost"
                       href={`/skjema/${form.slug}/edit`}
                     >
                       Edit form
@@ -343,6 +340,28 @@ function Forms() {
                   </>
                 ) : null}
               </div>
+              {isAdmin ? (
+                <div className="form-card-admin-row">
+                  <a
+                    className="ghost"
+                    href={`/skjema/${form.slug}/flagget`}
+                  >
+                    Flagget ({flaggedCounts[form.slug] || 0})
+                  </a>
+                  <a
+                    className="ghost"
+                    href={`/skjema/${form.slug}/analyse`}
+                  >
+                    Analyse
+                  </a>
+                  <a
+                    className="ghost"
+                    href={`/skjema/${form.slug}/leveringsliste`}
+                  >
+                    Leverings-/bestillingsliste
+                  </a>
+                </div>
+              ) : null}
             </article>
           ))}
       </section>

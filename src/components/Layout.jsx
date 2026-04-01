@@ -20,6 +20,8 @@ const LOGO_CACHE_KEY = "crust-brand-logo-v1";
 function Layout() {
   const location = useLocation();
   const isStandaloneFormPage = /^\/skjema\/[^/]+(?:\/.*)?$/.test(location.pathname);
+  const isAdminSectionPage =
+    location.pathname === "/admin" || location.pathname === "/sales";
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [logoSrc, setLogoSrc] = useState(() => {
     if (typeof window === "undefined") {
@@ -99,6 +101,7 @@ function Layout() {
       "/kontakt": "Kontakt",
       "/varsling": "Varsling",
       "/admin": "Admin",
+      "/sales": "Salg",
       "/skjema": "Skjemaer",
     };
     if (location.pathname === "/") {
@@ -113,9 +116,9 @@ function Layout() {
       : "Crust n' Trust";
   }, [location.pathname]);
 
-  return (
+      return (
     <div className="page">
-      {!isStandaloneFormPage ? (
+      {!isStandaloneFormPage && !isAdminSectionPage ? (
         <>
           <div className="rename-banner">
             <img
@@ -180,11 +183,19 @@ function Layout() {
         </>
       ) : null}
 
-      <main className={`page-main ${isStandaloneFormPage ? "is-standalone-form" : ""}`}>
+      <main
+        className={
+          isStandaloneFormPage
+            ? "page-main is-standalone-form"
+            : isAdminSectionPage
+              ? "admin-main"
+              : "page-main"
+        }
+      >
         <Outlet key={location.pathname} />
       </main>
 
-      {!isStandaloneFormPage ? (
+      {!isStandaloneFormPage && !isAdminSectionPage ? (
         <footer className="site-footer">
           <div className="site-footer-inner">
             <div>

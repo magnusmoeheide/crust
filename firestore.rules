@@ -60,5 +60,26 @@ service cloud.firestore {
       allow create, update, delete: if isCrustUser();
     }
 
+    match /integrations/{docId} {
+      allow read: if isCrustUser();
+      allow create, update, delete: if false;
+    }
+
+    match /zettlePrivate/{docId} {
+      allow read, write: if false;
+    }
+
+    match /zettleOAuthStates/{docId} {
+      allow read, write: if false;
+    }
+
+    match /plandayPrivate/{docId} {
+      allow read, write: if false;
+    }
+
+    match /plandayOAuthStates/{docId} {
+      allow read, write: if false;
+    }
+
   }
 }

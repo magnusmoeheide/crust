@@ -13,6 +13,11 @@
   width: 100%;
 }
 
+.admin-main {
+  min-height: 70vh;
+  width: 100%;
+}
+
 .page-main.is-standalone-form {
   min-height: 100vh;
   max-width: none;

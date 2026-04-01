@@ -40,6 +40,7 @@ const VarigHadeland = lazy(() => import("./pages/VarigHadeland"));
 const Obos = lazy(() => import("./pages/Obos"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Publications = lazy(() => import("./pages/Publications"));
+const Sales = lazy(() => import("./pages/Sales"));
 
 function withPageLoader(element) {
   return (
@@ -309,6 +310,7 @@ function App() {
         />
         <Route path="/obos" element={withPageLoader(<Obos />)} />
         <Route path="/admin" element={withPageLoader(<Admin />)} />
+        <Route path="/sales" element={withPageLoader(<Sales />)} />
         <Route path="/skjema" element={withPageLoader(<Forms />)} />
         <Route path="/skjema/:formSlug" element={withPageLoader(<RoutedFormPage />)} />
         <Route
@@ -329,6 +331,10 @@ function App() {
         />
         <Route
           path="/skjema/:formSlug/analyse"
+          element={withPageLoader(<RoutedFormPage />)}
+        />
+        <Route
+          path="/skjema/:formSlug/leveringsliste/innstillinger"
           element={withPageLoader(<RoutedFormPage />)}
         />
         <Route

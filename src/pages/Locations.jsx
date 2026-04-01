@@ -130,6 +130,18 @@ function Locations() {
   }, []);
 
   const hasLocations = useMemo(() => locations.length > 0, [locations]);
+  const locationCount = locations.length;
+  const locationLabel = locationCount === 1 ? "vogn" : "vogner";
+  const foodtruckLabel = locationCount === 1 ? "foodtruck" : "foodtrucks";
+  const heroEyebrow = loadingLocations
+    ? "Pizzavogner - ett mål!"
+    : `${locationCount} ${locationLabel} - ett mål!`;
+  const heroLead = loadingLocations
+    ? "Våre pizzavogner bringer Crust n' Trust til nabolag over hele Oslo - og litt utenfor! Ta turen innom for en smak av vår crusty pizza."
+    : `Våre ${locationCount} ${foodtruckLabel} bringer Crust n' Trust til nabolag over hele Oslo - og litt utenfor! Ta turen innom for en smak av vår crusty pizza.`;
+  const activeLocationsLabel = loadingLocations
+    ? "Aktive vogner lastes inn"
+    : `${locationCount} aktive ${locationLabel}`;
 
   function validateLocation(formData) {
     if (!formData.name.trim()) {
@@ -275,19 +287,16 @@ function Locations() {
     <div className="locations-page">
       <header className="locations-hero">
         <div>
-          <p className="eyebrow">Ti vogner - ett mål!</p>
+          <p className="eyebrow">{heroEyebrow}</p>
           <h1>Finn en pizzavogn!</h1>
-          <p className="lead">
-            Våre 10 foodtrucks bringer Crust n' Trust til nabolag over hele Oslo
-            - og litt utenfor! Ta turen innom for en smak av vår crusty pizza.
-          </p>
+          <p className="lead">{heroLead}</p>
         </div>
         <div className="locations-card">
           <h2>
             <FontAwesomeIcon icon={faTruck} /> 2026
           </h2>
           <ul>
-            <li>10 aktive vogner</li>
+            <li>{activeLocationsLabel}</li>
             <li>Daglig servering</li>
             <li>Åpner fra 7. april og utover måneden!</li>
           </ul>

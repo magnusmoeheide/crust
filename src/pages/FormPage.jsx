@@ -6,6 +6,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -147,6 +148,22 @@ function parseQuestionOptions(rawOptions) {
   }
 
   return []
+}
+
+function normalizeVisibleForLocations(rawLocations) {
+  const values = Array.isArray(rawLocations)
+    ? rawLocations
+    : typeof rawLocations === 'string'
+      ? rawLocations.split(',')
+      : []
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || '').trim())
+        .filter(Boolean),
+    ),
+  )
 }
 
 function readPreferredPublicFormLanguage() {
@@ -357,6 +374,7 @@ function normalizeQuestion(question, index) {
         : '',
     helpTextColor: String(question?.helpTextColor || '').trim(),
     helpTextBold: Boolean(question?.helpTextBold),
+    visibleForLocations: type === 'location' ? [] : normalizeVisibleForLocations(question?.visibleForLocations),
     selectOptionDetails,
     options,
   }
@@ -490,6 +508,59 @@ function getSubmissionLocation(answers, questions = []) {
   }
 
   return getSubmissionPlace(answers)
+}
+
+function getSelectedFormLocation(questions = [], answers = {}, locationOtherAnswers = {}) {
+  const locationQuestion = questions.find((question) => question.type === 'location')
+  if (!locationQuestion?.id) {
+    return ''
+  }
+
+  const answerValue = answers?.[locationQuestion.id]
+  if (answerValue === LOCATION_OTHER_VALUE) {
+    return String(locationOtherAnswers?.[locationQuestion.id] || '').trim()
+  }
+
+  return String(answerValue || '').trim()
+}
+
+function isQuestionVisibleForLocation(question, selectedLocationName) {
+  if (!question || question.type === 'location') {
+    return true
+  }
+
+  const visibleForLocations = normalizeVisibleForLocations(question.visibleForLocations)
+  if (visibleForLocations.length === 0) {
+    return true
+  }
+
+  const normalizedSelectedLocation = String(selectedLocationName || '').trim().toLowerCase()
+  if (!normalizedSelectedLocation) {
+    return false
+  }
+
+  return visibleForLocations.some(
+    (locationName) => String(locationName || '').trim().toLowerCase() === normalizedSelectedLocation,
+  )
+}
+
+function getVisibleFormQuestions(questions = [], selectedLocationName = '') {
+  return questions.filter((question, index) => {
+    if (isSectionQuestion(question)) {
+      for (let nextIndex = index + 1; nextIndex < questions.length; nextIndex += 1) {
+        const nextQuestion = questions[nextIndex]
+        if (isSectionQuestion(nextQuestion)) {
+          break
+        }
+        if (isQuestionVisibleForLocation(nextQuestion, selectedLocationName)) {
+          return true
+        }
+      }
+      return false
+    }
+
+    return isQuestionVisibleForLocation(question, selectedLocationName)
+  })
 }
 
 function isStorageImagePath(value) {
@@ -805,6 +876,35 @@ function sortDeliveryCards(cards = []) {
   })
 }
 
+function sortDeliveryLocationEntries(entries = []) {
+  return [...entries].sort((a, b) => {
+    if (a.currentCategory !== b.currentCategory) {
+      return a.currentCategory === 'red' ? -1 : 1
+    }
+
+    const aUnits = typeof a.recommendedUnits === 'number' ? a.recommendedUnits : -1
+    const bUnits = typeof b.recommendedUnits === 'number' ? b.recommendedUnits : -1
+    if (bUnits !== aUnits) {
+      return bUnits - aUnits
+    }
+
+    return String(a.location || '').localeCompare(String(b.location || ''), 'nb')
+  })
+}
+
+function formatDeliveryPurchaseLabel(item) {
+  const hasKnownUnits = typeof item?.recommendedUnits === 'number'
+
+  if (item?.unlimited) {
+    if (hasKnownUnits && item.recommendedUnits > 0) {
+      return `Minst ${item.recommendedUnits} stk`
+    }
+    return 'Sett maks antall for å få beregning'
+  }
+
+  return `${hasKnownUnits ? item.recommendedUnits : 0} stk`
+}
+
 function getSubmissionStatusLabel(status) {
   switch (String(status || '').trim()) {
     case 'reviewed':
@@ -931,6 +1031,7 @@ function createEditorQuestion(seed) {
     deliveryMaxUnits: '',
     helpTextColor: '',
     helpTextBold: false,
+    visibleForLocations: [],
     selectOptionDetails: {},
     imagePreviewUrl: '',
     imageFile: null,
@@ -1057,6 +1158,20 @@ function getSubmitErrorMessage(error) {
   return code ? `Noe gikk galt ved innsending (${code}). Prøv igjen.` : 'Noe gikk galt ved innsending. Prøv igjen.'
 }
 
+function getLocationsLoadErrorMessage(error) {
+  const code = error?.code || ''
+
+  if (code === 'permission-denied') {
+    return 'Kunne ikke hente lokasjoner. Sjekk Firestore-regler eller admin-tilgang.'
+  }
+
+  if (code === 'unauthenticated') {
+    return 'Du må være logget inn som admin for å hente lokasjoner her.'
+  }
+
+  return code ? `Kunne ikke hente lokasjoner (${code}).` : 'Kunne ikke hente lokasjoner akkurat nå.'
+}
+
 function FormPage() {
   const { formSlug = STENGESKJEMA_ID, receiptToken = '', submissionId = '' } = useParams()
   const location = useLocation()
@@ -1069,6 +1184,7 @@ function FormPage() {
   const isSubmissionsView = location.pathname.endsWith('/submissions')
   const isReviewView = location.pathname.includes('/review/')
   const isFlaggedView = location.pathname.endsWith('/flagget')
+  const isDeliverySettingsView = location.pathname.endsWith('/leveringsliste/innstillinger')
   const isDeliveryView = location.pathname.endsWith('/leveringsliste')
   const isHistoryView =
     location.pathname.endsWith('/analyse') || location.pathname.endsWith('/historikk')
@@ -1080,6 +1196,7 @@ function FormPage() {
     !isHistoryView &&
     !isFlaggedView &&
     !isReviewView &&
+    !isDeliverySettingsView &&
     !isDeliveryView
   const isSubmissionEditMode = !isReceiptPage && Boolean(editReceiptToken) && isStandalonePublicForm
   const activeReceiptLookupToken = isReceiptPage ? receiptToken : editReceiptToken
@@ -1098,6 +1215,7 @@ function FormPage() {
   const [loadingForm, setLoadingForm] = useState(true)
   const [availableLocations, setAvailableLocations] = useState([])
   const [loadingLocations, setLoadingLocations] = useState(true)
+  const [availableLocationsError, setAvailableLocationsError] = useState('')
   const [draftReady, setDraftReady] = useState(false)
   const [submitState, setSubmitState] = useState({ submitting: false, message: '', error: '' })
   const [submitOverlay, setSubmitOverlay] = useState({ open: false, status: 'idle' })
@@ -1120,6 +1238,11 @@ function FormPage() {
     defaultStengeskjema.questions.map((item, index) => toEditorQuestion(item, index)),
   )
   const [saveState, setSaveState] = useState({ saving: false, message: '', error: '' })
+  const [deliverySettingsState, setDeliverySettingsState] = useState({
+    saving: false,
+    message: '',
+    error: '',
+  })
 
   const [submissions, setSubmissions] = useState([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
@@ -1554,6 +1677,7 @@ function FormPage() {
       isSubmissionsView ||
       isReceiptPage ||
       isHistoryView ||
+      isDeliverySettingsView ||
       isDeliveryView ||
       isFlaggedView ||
       isReviewView
@@ -1603,6 +1727,7 @@ function FormPage() {
     answers,
     draftReady,
     formData.questions,
+    isDeliverySettingsView,
     isSubmissionEditMode,
     isDeliveryView,
     isEditPage,
@@ -1618,12 +1743,12 @@ function FormPage() {
   ])
 
   useEffect(() => {
-    let cancelled = false
+    setLoadingLocations(true)
+    setAvailableLocationsError('')
 
-    async function loadLocations() {
-      setLoadingLocations(true)
-      try {
-        const snapshot = await getDocs(query(collection(db, 'locations')))
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'locations')),
+      (snapshot) => {
         const rows = snapshot.docs
           .map((locationDoc) => ({
             id: locationDoc.id,
@@ -1637,21 +1762,18 @@ function FormPage() {
             return String(a.name || '').localeCompare(String(b.name || ''), 'nb')
           })
 
-        if (!cancelled) {
-          setAvailableLocations(rows)
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingLocations(false)
-        }
-      }
-    }
+        setAvailableLocations(rows)
+        setAvailableLocationsError('')
+        setLoadingLocations(false)
+      },
+      (error) => {
+        setAvailableLocations([])
+        setAvailableLocationsError(getLocationsLoadErrorMessage(error))
+        setLoadingLocations(false)
+      },
+    )
 
-    loadLocations()
-
-    return () => {
-      cancelled = true
-    }
+    return unsubscribe
   }, [])
 
   useEffect(() => {
@@ -2093,11 +2215,7 @@ function FormPage() {
       return
     }
 
-    const missingRequired = formData.questions.find((question) => {
-      if (isSectionQuestion(question)) {
-        return false
-      }
-
+    const missingRequired = visibleInputQuestions.find((question) => {
       const answerValue = String(answers[question.id] || '').trim()
       const selectedBehavior = getSelectOptionBehavior(question, answerValue)
 
@@ -2176,12 +2294,12 @@ function FormPage() {
           : doc(collection(db, 'formSubmissionReceipts'))
       const imagePaths = []
       const receiptImageMap = {}
-      const submissionAnswers = { ...answers }
+      const submissionAnswers = {}
 
-      formData.questions.forEach((question) => {
-        if (isSectionQuestion(question)) {
-          return
-        }
+      visibleInputQuestions.forEach((question) => {
+        const answerValue = answers[question.id]
+        submissionAnswers[question.id] =
+          typeof answerValue === 'string' ? answerValue.trim() : answerValue || ''
 
         if (question.type === 'location') {
           submissionAnswers[question.id] =
@@ -2223,7 +2341,7 @@ function FormPage() {
       }
 
       await Promise.all(
-        formData.questions.map(async (question) => {
+        visibleInputQuestions.map(async (question) => {
           if (question.type !== 'camera') {
             return
           }
@@ -2478,6 +2596,7 @@ function FormPage() {
             imagePreviewUrl: question.imagePreviewUrl,
             imageFile: question.imageFile,
             removeImage: question.removeImage,
+            visibleForLocations: value === 'location' ? [] : normalizeVisibleForLocations(question.visibleForLocations),
             selectOptionDetails: nextSelectOptionDetails,
             options: value === 'select' ? nextOptions : [],
             optionsText:
@@ -2580,6 +2699,32 @@ function FormPage() {
     )
   }
 
+  function onEditorQuestionVisibleLocationChange(index, locationName, checked) {
+    const normalizedLocationName = String(locationName || '').trim()
+    if (!normalizedLocationName) {
+      return
+    }
+
+    setEditorQuestions((previous) =>
+      previous.map((question, questionIndex) => {
+        if (questionIndex !== index) {
+          return question
+        }
+
+        const nextVisibleForLocations = checked
+          ? [...normalizeVisibleForLocations(question.visibleForLocations), normalizedLocationName]
+          : normalizeVisibleForLocations(question.visibleForLocations).filter(
+              (item) => item !== normalizedLocationName,
+            )
+
+        return {
+          ...question,
+          visibleForLocations: nextVisibleForLocations,
+        }
+      }),
+    )
+  }
+
   function getEditorLocationSetting(locationId, question) {
     const existingSetting =
       editorLocationSettings[locationId] && editorLocationSettings[locationId][question.id]
@@ -2635,6 +2780,7 @@ function FormPage() {
         deliveryMaxUnits: '',
         helpTextColor: '',
         helpTextBold: false,
+        visibleForLocations: [],
         selectOptionDetails: {},
         imagePreviewUrl: '',
         imageFile: null,
@@ -2830,10 +2976,48 @@ function FormPage() {
         await setDoc(formRef, payload)
       }
 
-      const deliveryQuestions = preparedQuestions.filter((question) => question.type === 'select')
+      setFormData({
+        ...formData,
+        ...payload,
+      })
+      setEditorQuestions(preparedQuestions.map((question, index) => toEditorQuestion(question, index)))
+      setSaveState({
+        saving: false,
+        message:
+          typeof targetIndex === 'number'
+            ? `Spørsmål ${targetIndex + 1} lagret.`
+            : 'Skjema oppdatert.',
+        error: '',
+      })
+    } catch (error) {
+      setSaveState({
+        saving: false,
+        message: '',
+        error: getFormSaveErrorMessage(error),
+      })
+    }
+  }
+
+  async function onSaveDeliverySettings() {
+    if (availableLocations.length === 0) {
+      setDeliverySettingsState({
+        saving: false,
+        message: '',
+        error: 'Ingen lokasjoner tilgjengelig å lagre innstillinger for.',
+      })
+      return
+    }
+
+    setDeliverySettingsState({
+      saving: true,
+      message: '',
+      error: '',
+    })
+
+    try {
       const nextLocations = await Promise.all(
         availableLocations.map(async (location) => {
-          const nextFormSettings = deliveryQuestions.reduce((accumulator, question) => {
+          const nextFormSettings = deliveryConfigQuestions.reduce((accumulator, question) => {
             const currentSetting = getEditorLocationSetting(location.id, question)
 
             accumulator[question.id] = {
@@ -2870,25 +3054,18 @@ function FormPage() {
         }),
       )
 
-      setFormData({
-        ...formData,
-        ...payload,
-      })
       setAvailableLocations(nextLocations)
-      setEditorQuestions(preparedQuestions.map((question, index) => toEditorQuestion(question, index)))
-      setSaveState({
+      setAvailableLocationsError('')
+      setDeliverySettingsState({
         saving: false,
-        message:
-          typeof targetIndex === 'number'
-            ? `Spørsmål ${targetIndex + 1} lagret.`
-            : 'Skjema oppdatert.',
+        message: 'Lokasjonsinnstillinger lagret.',
         error: '',
       })
     } catch (error) {
-      setSaveState({
+      setDeliverySettingsState({
         saving: false,
         message: '',
-        error: getFormSaveErrorMessage(error),
+        error: getLocationsLoadErrorMessage(error),
       })
     }
   }
@@ -3606,7 +3783,10 @@ function FormPage() {
             })}
             <option value={LOCATION_OTHER_VALUE}>{publicCopy.other}</option>
           </select>
-          {!loadingLocations && !hasAvailableLocations ? (
+          {!loadingLocations && availableLocationsError ? (
+            <small className="question-help forms-error">{availableLocationsError}</small>
+          ) : null}
+          {!loadingLocations && !availableLocationsError && !hasAvailableLocations ? (
             <small className="question-help">{publicCopy.noLocationsHelp}</small>
           ) : null}
           {value === LOCATION_OTHER_VALUE ? (
@@ -3746,6 +3926,18 @@ function FormPage() {
   const hasLocationQuestions = formData.questions.some(
     (question) => !isSectionQuestion(question) && question.type === 'location',
   )
+  const selectedFormLocation = useMemo(
+    () => getSelectedFormLocation(formData.questions, answers, locationOtherAnswers),
+    [formData.questions, answers, locationOtherAnswers],
+  )
+  const visibleFormQuestions = useMemo(
+    () => getVisibleFormQuestions(formData.questions, selectedFormLocation),
+    [formData.questions, selectedFormLocation],
+  )
+  const visibleInputQuestions = useMemo(
+    () => visibleFormQuestions.filter((question) => !isSectionQuestion(question)),
+    [visibleFormQuestions],
+  )
   const isPublicFormReady =
     !loadingForm &&
     draftReady &&
@@ -3811,6 +4003,7 @@ function FormPage() {
   const analysisQuestions = formData.questions.filter(
     (question) => !isSectionQuestion(question) && Boolean(question.includeInAnalysis),
   )
+  const deliveryConfigQuestions = analysisQuestions.filter((question) => question.type === 'select')
   const visibleHistoryQuestions =
     historyShowAllQuestions
       ? analysisQuestions
@@ -3923,6 +4116,7 @@ function FormPage() {
         const currentProduct = existingGroup.productsMap.get(product.questionId) || {
           ...product,
           locations: [],
+          locationEntries: [],
           recommendedUnits: 0,
           hasUnlimitedEntries: false,
           isOrdered: true,
@@ -3930,6 +4124,17 @@ function FormPage() {
         }
 
         currentProduct.locations.push(card.location)
+        currentProduct.locationEntries.push({
+          location: card.location,
+          currentValue: product.currentValue,
+          currentCategory: product.currentCategory,
+          targetValue: product.targetValue,
+          maxUnits: product.maxUnits,
+          unlimited: product.unlimited,
+          recommendedUnits: product.recommendedUnits,
+          isOrdered: product.isOrdered,
+          sourceEntries: Array.isArray(product.sourceEntries) ? product.sourceEntries : [],
+        })
         if (typeof product.recommendedUnits === 'number') {
           currentProduct.recommendedUnits += product.recommendedUnits
         } else {
@@ -3957,7 +4162,10 @@ function FormPage() {
     city: group.city,
     locations: group.locations.sort((a, b) => a.localeCompare(b, 'nb')),
     submission: group.submission,
-    products: Array.from(group.productsMap.values()),
+    products: Array.from(group.productsMap.values()).map((product) => ({
+      ...product,
+      locationEntries: sortDeliveryLocationEntries(product.locationEntries),
+    })),
     knownTotalUnits: group.knownTotalUnits,
     hasUnlimitedProducts: group.hasUnlimitedProducts,
   }))
@@ -4066,6 +4274,7 @@ function FormPage() {
     !isHistoryView &&
     !isFlaggedView &&
     !isReviewView &&
+    !isDeliverySettingsView &&
     !isDeliveryView
 
   useEffect(() => {
@@ -4243,13 +4452,154 @@ function FormPage() {
     )
   }
 
+  function renderDeliverySettingsPage() {
+    return (
+      <div className="delivery-settings-page">
+        <div className="history-header">
+          <div className="history-title-block">
+            <h3>Lokasjonsinnstillinger</h3>
+            <p className="history-legend">
+              Sett mål og maks beholdning per lokasjon for produktene som brukes i leveringslisten.
+            </p>
+          </div>
+          <div className="delivery-settings-actions">
+            <a className="ghost" href={`/skjema/${activeFormSlug}/leveringsliste`}>
+              Tilbake til leveringsliste
+            </a>
+            <button
+              type="button"
+              className="cta"
+              onClick={onSaveDeliverySettings}
+              disabled={deliverySettingsState.saving || loadingLocations || Boolean(availableLocationsError)}
+            >
+              {deliverySettingsState.saving ? 'Lagrer...' : 'Lagre innstillinger'}
+            </button>
+          </div>
+        </div>
+
+        {deliverySettingsState.error ? <p className="forms-error">{deliverySettingsState.error}</p> : null}
+        {deliverySettingsState.message ? <p className="forms-success">{deliverySettingsState.message}</p> : null}
+        {loadingLocations ? <p>Laster lokasjoner...</p> : null}
+        {!loadingLocations && availableLocationsError ? (
+          <p className="forms-error">{availableLocationsError}</p>
+        ) : null}
+        {!loadingLocations && !availableLocationsError && availableLocations.length === 0 ? (
+          <p>Ingen lokasjoner funnet ennå. Sjekk `/lokasjoner`.</p>
+        ) : null}
+        {!loadingLocations &&
+        !availableLocationsError &&
+        availableLocations.length > 0 &&
+        deliveryConfigQuestions.length === 0 ? (
+          <p>Ingen valgfelt er merket med "Inkluder i analyse" ennå.</p>
+        ) : null}
+
+        {!loadingLocations &&
+        !availableLocationsError &&
+        availableLocations.length > 0 &&
+        deliveryConfigQuestions.length > 0 ? (
+          <div className="delivery-settings-list">
+            {deliveryConfigQuestions.map((question) => (
+              <article key={question.id} className="response-card delivery-settings-card">
+                <div className="delivery-settings-card-header">
+                  <div>
+                    <h4>{question.analysisLabel || question.label}</h4>
+                    <p>{question.label}</p>
+                  </div>
+                </div>
+                <div className="location-delivery-settings">
+                  <div className="location-delivery-settings-list">
+                    {availableLocations.map((location) => {
+                      const locationSetting = getEditorLocationSetting(location.id, question)
+
+                      return (
+                        <div key={`${question.id}-${location.id}`} className="location-delivery-setting-row">
+                          <p className="location-delivery-setting-name">{location.name}</p>
+                          <label
+                            className="field-block"
+                            htmlFor={`delivery-settings-target-${question.id}-${location.id}`}
+                          >
+                            <span>Mål</span>
+                            <select
+                              id={`delivery-settings-target-${question.id}-${location.id}`}
+                              value={locationSetting.targetValue}
+                              onChange={(event) =>
+                                onEditorLocationSettingChange(
+                                  location.id,
+                                  question,
+                                  'targetValue',
+                                  event.target.value,
+                                )
+                              }
+                            >
+                              {(question.options || []).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label
+                            className="checkbox-inline"
+                            htmlFor={`delivery-settings-unlimited-${question.id}-${location.id}`}
+                          >
+                            <input
+                              id={`delivery-settings-unlimited-${question.id}-${location.id}`}
+                              type="checkbox"
+                              checked={Boolean(locationSetting.deliveryUnlimited)}
+                              onChange={(event) =>
+                                onEditorLocationSettingChange(
+                                  location.id,
+                                  question,
+                                  'deliveryUnlimited',
+                                  event.target.checked,
+                                )
+                              }
+                            />
+                            Ubegrenset
+                          </label>
+                          <label
+                            className="field-block delivery-max-field"
+                            htmlFor={`delivery-settings-max-${question.id}-${location.id}`}
+                          >
+                            <span>Maks antall</span>
+                            <input
+                              id={`delivery-settings-max-${question.id}-${location.id}`}
+                              type="number"
+                              min="1"
+                              inputMode="numeric"
+                              value={locationSetting.deliveryMaxUnits || ''}
+                              disabled={Boolean(locationSetting.deliveryUnlimited)}
+                              placeholder="f.eks. 40"
+                              onChange={(event) =>
+                                onEditorLocationSettingChange(
+                                  location.id,
+                                  question,
+                                  'deliveryMaxUnits',
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <div
       className={`forms-page stengeskjema-page ${isStandalonePublicForm ? 'public-form-page' : ''} ${
-        isHistoryView || isDeliveryView ? 'history-page' : ''
+        isHistoryView || isDeliveryView || isDeliverySettingsView ? 'history-page' : ''
       }`}
     >
-      {isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView ? (
+      {isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView || isDeliverySettingsView ? (
         <form action="/skjema" method="get">
           <button type="submit" className="admin-login-link">
             Tilbake til hovedmeny
@@ -4261,6 +4611,7 @@ function FormPage() {
         !isHistoryView &&
         !isFlaggedView &&
         !isReviewView &&
+        !isDeliverySettingsView &&
         !isDeliveryView ? (
         <form action="/skjema" method="get">
           <button type="submit" className="admin-login-link">
@@ -4409,6 +4760,7 @@ function FormPage() {
             !isHistoryView &&
             !isFlaggedView &&
             !isReviewView &&
+            !isDeliverySettingsView &&
             !isDeliveryView ? (
             <section className="form-entry">
               {isSubmissionEditMode ? <p className="field-help">{publicCopy.editingSubmission}</p> : null}
@@ -4418,7 +4770,7 @@ function FormPage() {
                 </button>
               </div>
               <form key={formInstanceKey} onSubmit={onSubmit} className="dynamic-form">
-                {formData.questions.map((question) =>
+                {visibleFormQuestions.map((question) =>
                   isSectionQuestion(question) ? (
                     <div key={question.id} className="form-section-block">
                       {renderSectionHeading(question)}
@@ -4507,18 +4859,28 @@ function FormPage() {
         </>
       )}
 
-      {(isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView || isDeliveryView) && !isAdmin && !loading ? (
+      {(isEditPage ||
+        isSubmissionsView ||
+        isHistoryView ||
+        isFlaggedView ||
+        isReviewView ||
+        isDeliveryView ||
+        isDeliverySettingsView) &&
+      !isAdmin &&
+      !loading ? (
         <section className="admin-login-line">
           <p className="forms-error">Kun admin har tilgang til denne siden.</p>
         </section>
       ) : null}
 
-      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView) ? (
-        <section className={isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView || isDeliveryView ? 'admin-edit-shell' : 'admin-box'}>
+      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView || isDeliverySettingsView) ? (
+        <section className={isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView || isDeliveryView || isDeliverySettingsView ? 'admin-edit-shell' : 'admin-box'}>
           {loading ? <p>Kontrollerer innlogging...</p> : null}
           {error ? <p className="forms-error">{error}</p> : null}
 
-            {isEditPage ? (
+            {isDeliverySettingsView ? (
+              renderDeliverySettingsPage()
+            ) : isEditPage ? (
               <div className="admin-editor">
                 <h3>Rediger skjema</h3>
                 <label className="field-block" htmlFor="editor-title">
@@ -4909,7 +5271,63 @@ function FormPage() {
                                 </label>
                               </div>
                               <div className="editor-settings-detail-row">
-                                <div className="editor-settings-detail-cell editor-settings-detail-empty" />
+                                <div
+                                  className={`editor-settings-detail-cell${
+                                    question.type === 'location' ? ' editor-settings-detail-empty' : ''
+                                  }`}
+                                >
+                                  {question.type !== 'location' ? (
+                                    <div className="question-location-visibility-settings">
+                                      <p className="question-location-visibility-title">
+                                        Vis kun for lokasjoner
+                                      </p>
+                                      {loadingLocations ? (
+                                        <p className="field-help">Laster lokasjoner...</p>
+                                      ) : availableLocationsError ? (
+                                        <p className="field-help forms-error">{availableLocationsError}</p>
+                                      ) : availableLocations.length > 0 ? (
+                                        <div className="question-location-visibility-list">
+                                          {availableLocations.map((location) => {
+                                            const locationName = String(location.name || '').trim()
+                                            if (!locationName) {
+                                              return null
+                                            }
+
+                                            return (
+                                              <label
+                                                key={`${question.id}-visible-location-${location.id}`}
+                                                className="checkbox-inline question-location-visibility-option"
+                                                htmlFor={`q-visible-location-${index}-${location.id}`}
+                                              >
+                                                <input
+                                                  id={`q-visible-location-${index}-${location.id}`}
+                                                  type="checkbox"
+                                                  checked={normalizeVisibleForLocations(
+                                                    question.visibleForLocations,
+                                                  ).includes(locationName)}
+                                                  onChange={(event) =>
+                                                    onEditorQuestionVisibleLocationChange(
+                                                      index,
+                                                      locationName,
+                                                      event.target.checked,
+                                                    )
+                                                  }
+                                                />
+                                                {locationName}
+                                              </label>
+                                            )
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <p className="field-help">
+                                          Ingen lokasjoner funnet ennå. Sjekk /lokasjoner.
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <p className="field-help">Lokasjonsspørsmålet vises alltid.</p>
+                                  )}
+                                </div>
                                 <div className="editor-settings-detail-cell">
                                   {question.includeInAnalysis ? (
                                     <div className="editor-settings-detail-stack">
@@ -4928,101 +5346,6 @@ function FormPage() {
                                           }
                                         />
                                       </label>
-                                      {question.type === 'select' ? (
-                                        <div className="location-delivery-settings">
-                                          <p className="location-delivery-settings-title">
-                                            Lokasjonsinnstillinger
-                                          </p>
-                                          {availableLocations.length > 0 ? (
-                                            <div className="location-delivery-settings-list">
-                                              {availableLocations.map((location) => {
-                                                const locationSetting = getEditorLocationSetting(location.id, question)
-
-                                                return (
-                                                  <div
-                                                    key={`${question.id}-${location.id}`}
-                                                    className="location-delivery-setting-row"
-                                                  >
-                                                    <p className="location-delivery-setting-name">
-                                                      {location.name}
-                                                    </p>
-                                                    <label
-                                                      className="field-block"
-                                                      htmlFor={`q-location-target-${index}-${location.id}`}
-                                                    >
-                                                      <span>Mål</span>
-                                                      <select
-                                                        id={`q-location-target-${index}-${location.id}`}
-                                                        value={locationSetting.targetValue}
-                                                        onChange={(event) =>
-                                                          onEditorLocationSettingChange(
-                                                            location.id,
-                                                            question,
-                                                            'targetValue',
-                                                            event.target.value,
-                                                          )
-                                                        }
-                                                      >
-                                                        {(question.options || []).map((option) => (
-                                                          <option key={option} value={option}>
-                                                            {option}
-                                                          </option>
-                                                        ))}
-                                                      </select>
-                                                    </label>
-                                                    <label
-                                                      className="checkbox-inline"
-                                                      htmlFor={`q-location-unlimited-${index}-${location.id}`}
-                                                    >
-                                                      <input
-                                                        id={`q-location-unlimited-${index}-${location.id}`}
-                                                        type="checkbox"
-                                                        checked={Boolean(locationSetting.deliveryUnlimited)}
-                                                        onChange={(event) =>
-                                                          onEditorLocationSettingChange(
-                                                            location.id,
-                                                            question,
-                                                            'deliveryUnlimited',
-                                                            event.target.checked,
-                                                          )
-                                                        }
-                                                      />
-                                                      Ubegrenset
-                                                    </label>
-                                                    <label
-                                                      className="field-block delivery-max-field"
-                                                      htmlFor={`q-location-max-${index}-${location.id}`}
-                                                    >
-                                                      <span>Maks antall</span>
-                                                      <input
-                                                        id={`q-location-max-${index}-${location.id}`}
-                                                        type="number"
-                                                        min="1"
-                                                        inputMode="numeric"
-                                                        value={locationSetting.deliveryMaxUnits || ''}
-                                                        disabled={Boolean(locationSetting.deliveryUnlimited)}
-                                                        placeholder="f.eks. 40"
-                                                        onChange={(event) =>
-                                                          onEditorLocationSettingChange(
-                                                            location.id,
-                                                            question,
-                                                            'deliveryMaxUnits',
-                                                            event.target.value,
-                                                          )
-                                                        }
-                                                      />
-                                                    </label>
-                                                  </div>
-                                                )
-                                              })}
-                                            </div>
-                                          ) : (
-                                            <p className="field-help">
-                                              Opprett lokasjoner først for å sette mål og maks antall per lokasjon.
-                                            </p>
-                                          )}
-                                        </div>
-                                      ) : null}
                                     </div>
                                   ) : null}
                                 </div>
@@ -5697,35 +6020,43 @@ function FormPage() {
                       Basert på siste innsending per lokasjon og første normale nivå for hvert produkt.
                     </p>
                   </div>
-                  <div className="delivery-toggle-row">
-                    <label className="checkbox-inline delivery-group-toggle">
-                      <input
-                        type="checkbox"
-                        checked={deliveryGroupByNeighborhood}
-                        onChange={(event) => {
-                          const isChecked = event.target.checked
-                          setDeliveryGroupByNeighborhood(isChecked)
-                          if (!isChecked) {
-                            setDeliveryGroupByProductPerCity(false)
-                          }
-                        }}
-                      />
-                      Samle per by
-                    </label>
-                    <label className="checkbox-inline delivery-group-toggle">
-                      <input
-                        type="checkbox"
-                        checked={deliveryGroupByProductPerCity}
-                        onChange={(event) => {
-                          const isChecked = event.target.checked
-                          setDeliveryGroupByProductPerCity(isChecked)
-                          if (isChecked) {
-                            setDeliveryGroupByNeighborhood(true)
-                          }
-                        }}
-                      />
-                      Samle per produkt per by
-                    </label>
+                  <div className="delivery-controls">
+                    <a
+                      className="ghost"
+                      href={`/skjema/${activeFormSlug}/leveringsliste/innstillinger`}
+                    >
+                      Lokasjonsinnstillinger
+                    </a>
+                    <div className="delivery-toggle-row">
+                      <label className="checkbox-inline delivery-group-toggle">
+                        <input
+                          type="checkbox"
+                          checked={deliveryGroupByNeighborhood}
+                          onChange={(event) => {
+                            const isChecked = event.target.checked
+                            setDeliveryGroupByNeighborhood(isChecked)
+                            if (!isChecked) {
+                              setDeliveryGroupByProductPerCity(false)
+                            }
+                          }}
+                        />
+                        Samle per by
+                      </label>
+                      <label className="checkbox-inline delivery-group-toggle">
+                        <input
+                          type="checkbox"
+                          checked={deliveryGroupByProductPerCity}
+                          onChange={(event) => {
+                            const isChecked = event.target.checked
+                            setDeliveryGroupByProductPerCity(isChecked)
+                            if (isChecked) {
+                              setDeliveryGroupByNeighborhood(true)
+                            }
+                          }}
+                        />
+                        Samle per produkt per by
+                      </label>
+                    </div>
                   </div>
                 </div>
                 {loadingSubmissions ? <p>Laster leveringsliste...</p> : null}
@@ -5828,31 +6159,76 @@ function FormPage() {
                                                       )}
                                                     </div>
                                                   </div>
-                                                  <p className="delivery-item-values">
-                                                    <span
-                                                      className={`delivery-current-value is-${product.currentCategory}`}
-                                                    >
-                                                      <strong>Nå:</strong> {product.currentValue}
-                                                    </span>
-                                                    <span>
-                                                      <strong>Mål:</strong> {product.targetValue}
-                                                    </span>
-                                                  </p>
-                                                  <p>
-                                                    <strong>Maks:</strong>{' '}
-                                                    {product.unlimited
-                                                      ? 'Ubegrenset'
-                                                      : `${product.maxUnits} stk`}
-                                                  </p>
-                                                  <p>
-                                                    <strong>Anbefalt innkjøp:</strong>{' '}
-                                                    {product.unlimited
-                                                      ? 'Sett maks antall for å få beregning'
-                                                      : `${product.recommendedUnits} stk`}
-                                                  </p>
                                                   {actionError ? (
                                                     <p className="delivery-item-error">{actionError}</p>
                                                   ) : null}
+                                                  {Array.isArray(product.locationEntries) &&
+                                                  product.locationEntries.length > 0 ? (
+                                                    <>
+                                                      <div className="delivery-location-list">
+                                                        {product.locationEntries.map((entry) => (
+                                                          <article
+                                                            key={`${product.questionId}-${entry.location}`}
+                                                            className="delivery-location-entry"
+                                                          >
+                                                            <div className="delivery-location-entry-header">
+                                                              <p className="delivery-location-name">
+                                                                {entry.location}
+                                                              </p>
+                                                              <span
+                                                                className={`delivery-item-status is-${entry.currentCategory}`}
+                                                              >
+                                                                {entry.currentCategory === 'red'
+                                                                  ? 'Kritisk'
+                                                                  : 'Snart tomt'}
+                                                              </span>
+                                                            </div>
+                                                            <p className="delivery-item-values">
+                                                              <span
+                                                                className={`delivery-current-value is-${entry.currentCategory}`}
+                                                              >
+                                                                <strong>Nå:</strong> {entry.currentValue}
+                                                              </span>
+                                                              <span>
+                                                                <strong>Mål:</strong> {entry.targetValue}
+                                                              </span>
+                                                            </p>
+                                                            <p>
+                                                              <strong>Behov:</strong>{' '}
+                                                              {formatDeliveryPurchaseLabel(entry)}
+                                                            </p>
+                                                          </article>
+                                                        ))}
+                                                      </div>
+                                                      <p className="delivery-product-total">
+                                                        <strong>Totalt behov:</strong>{' '}
+                                                        {formatDeliveryPurchaseLabel(product)}
+                                                      </p>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <p className="delivery-item-values">
+                                                        <span
+                                                          className={`delivery-current-value is-${product.currentCategory}`}
+                                                        >
+                                                          <strong>Nå:</strong> {product.currentValue}
+                                                        </span>
+                                                        <span>
+                                                          <strong>Mål:</strong> {product.targetValue}
+                                                        </span>
+                                                      </p>
+                                                      <p>
+                                                        <strong>Maks:</strong>{' '}
+                                                        {product.unlimited
+                                                          ? 'Ubegrenset'
+                                                          : `${product.maxUnits} stk`}
+                                                      </p>
+                                                      <p>
+                                                        <strong>Anbefalt innkjøp:</strong>{' '}
+                                                        {formatDeliveryPurchaseLabel(product)}
+                                                      </p>
+                                                    </>
+                                                  )}
                                                 </>
                                               )
                                             })()}
@@ -5962,9 +6338,7 @@ function FormPage() {
                                             </p>
                                             <p>
                                               <strong>Anbefalt innkjøp:</strong>{' '}
-                                              {product.unlimited
-                                                ? 'Sett maks antall for å få beregning'
-                                                : `${product.recommendedUnits} stk`}
+                                              {formatDeliveryPurchaseLabel(product)}
                                             </p>
                                             {actionError ? (
                                               <p className="delivery-item-error">{actionError}</p>
