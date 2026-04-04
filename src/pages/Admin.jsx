@@ -510,6 +510,9 @@ function Admin() {
                 <Link className="admin-button" to="/skjema">
                   Gå til /skjema
                 </Link>
+                <Link className="admin-button admin-button-secondary" to="/admin/leverandører">
+                  Leverandører
+                </Link>
                 <Link className="admin-button admin-button-secondary" to="/sales">
                   Open sales
                 </Link>

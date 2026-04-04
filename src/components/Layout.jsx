@@ -21,7 +21,9 @@ function Layout() {
   const location = useLocation();
   const isStandaloneFormPage = /^\/skjema\/[^/]+(?:\/.*)?$/.test(location.pathname);
   const isAdminSectionPage =
-    location.pathname === "/admin" || location.pathname === "/sales";
+    location.pathname === "/admin" ||
+    location.pathname.startsWith("/admin/") ||
+    location.pathname === "/sales";
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [logoSrc, setLogoSrc] = useState(() => {
     if (typeof window === "undefined") {
@@ -101,6 +103,9 @@ function Layout() {
       "/kontakt": "Kontakt",
       "/varsling": "Varsling",
       "/admin": "Admin",
+      "/admin/leverandører": "Leverandører",
+      "/admin/leverandorer": "Leverandører",
+      "/admin/lokasjoner": "Leverandører",
       "/sales": "Salg",
       "/skjema": "Skjemaer",
     };

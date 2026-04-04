@@ -26,6 +26,7 @@ const ENGLISH_TRANSLATION_CACHE_KEY = 'crust-public-form-english-cache'
 const SUBMISSION_DATE_KEY = 'Innsendt dato'
 const SUBMISSION_TIME_KEY = 'Innsendt tid'
 const SELECT_DETAIL_SUFFIX = '__details'
+const IMAGE_CAPTURED_AT_SUFFIX = '__capturedAt'
 const SELF_DECLARATION_ACCEPTED_KEY = 'Egenerklæring bekreftet'
 const SELECT_OPTION_HISTORY_CATEGORIES = ['normal', 'orange', 'red']
 const RECEIPT_EDIT_WINDOW_MS = 30 * 60 * 1000
@@ -66,6 +67,10 @@ const PUBLIC_FORM_COPY = {
     uploadNewPhoto: 'Last opp nytt bilde',
     describeMore: 'Beskriv nærmere',
     fullName: 'Fullt navn',
+    phoneNumber: 'Telefonnummer',
+    phoneNumberPlaceholder: '8 siffer',
+    phoneNumberHelp: 'Oppgi 8 sifre uten +47.',
+    phoneMustBeEightDigits: 'Telefonnummer må være 8 sifre uten +47.',
     emailAddress: 'E-postadresse',
     selfDeclarationFallback: 'Jeg bekrefter opplysningene i skjemaet.',
     confirmSelfDeclaration: 'Jeg bekrefter egenerklæringen',
@@ -107,6 +112,10 @@ const PUBLIC_FORM_COPY = {
     uploadNewPhoto: 'Upload a new photo',
     describeMore: 'Describe in more detail',
     fullName: 'Full name',
+    phoneNumber: 'Phone number',
+    phoneNumberPlaceholder: '8 digits',
+    phoneNumberHelp: 'Enter 8 digits without +47.',
+    phoneMustBeEightDigits: 'Phone number must be 8 digits without +47.',
     emailAddress: 'Email address',
     selfDeclarationFallback: 'I confirm the information in the form.',
     confirmSelfDeclaration: 'I confirm the self-declaration',
@@ -131,6 +140,16 @@ function sanitizeFileName(name) {
     .toLowerCase()
     .replace(/[^a-z0-9.\-_]+/g, '-')
     .replace(/-+/g, '-')
+}
+
+function normalizeNorwegianPhoneNumber(value) {
+  const digits = String(value || '').replace(/\D+/g, '')
+  const withoutCountryCode = digits.length > 8 && digits.startsWith('47') ? digits.slice(2) : digits
+  return withoutCountryCode.slice(0, 8)
+}
+
+function isValidNorwegianPhoneNumber(value) {
+  return /^[0-9]{8}$/.test(normalizeNorwegianPhoneNumber(value))
 }
 
 function parseQuestionOptions(rawOptions) {
@@ -284,6 +303,201 @@ function readFileAsDataUrl(file) {
   })
 }
 
+function getImageCapturedAtAnswerKey(answerKey) {
+  return `${answerKey}${IMAGE_CAPTURED_AT_SUFFIX}`
+}
+
+function formatImageCapturedAtValue(date) {
+  return date.toLocaleString('nb-NO', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+function readAsciiValue(view, offset, length) {
+  if (!Number.isFinite(offset) || offset < 0 || offset >= view.byteLength) {
+    return ''
+  }
+
+  const safeLength = Math.max(0, Math.min(length, view.byteLength - offset))
+  let value = ''
+  for (let index = 0; index < safeLength; index += 1) {
+    const code = view.getUint8(offset + index)
+    if (code === 0) {
+      break
+    }
+    value += String.fromCharCode(code)
+  }
+  return value
+}
+
+function parseExifDateTimeString(rawValue) {
+  const match = String(rawValue || '').trim().match(
+    /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/,
+  )
+  if (!match) {
+    return null
+  }
+
+  const [, year, month, day, hour, minute, second] = match
+  const parsedDate = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  )
+
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate
+}
+
+function readExifAsciiTag(view, tiffStart, ifdOffset, littleEndian, targetTag) {
+  if (!Number.isFinite(ifdOffset) || ifdOffset < 0 || ifdOffset + 2 > view.byteLength) {
+    return ''
+  }
+
+  const entryCount = view.getUint16(ifdOffset, littleEndian)
+  for (let index = 0; index < entryCount; index += 1) {
+    const entryOffset = ifdOffset + 2 + index * 12
+    if (entryOffset + 12 > view.byteLength) {
+      break
+    }
+
+    const tag = view.getUint16(entryOffset, littleEndian)
+    if (tag !== targetTag) {
+      continue
+    }
+
+    const type = view.getUint16(entryOffset + 2, littleEndian)
+    const count = view.getUint32(entryOffset + 4, littleEndian)
+    if (type !== 2 || count === 0) {
+      return ''
+    }
+
+    const valueOffset = count <= 4
+      ? entryOffset + 8
+      : tiffStart + view.getUint32(entryOffset + 8, littleEndian)
+
+    return readAsciiValue(view, valueOffset, count)
+  }
+
+  return ''
+}
+
+function readExifLongTag(view, ifdOffset, littleEndian, targetTag) {
+  if (!Number.isFinite(ifdOffset) || ifdOffset < 0 || ifdOffset + 2 > view.byteLength) {
+    return null
+  }
+
+  const entryCount = view.getUint16(ifdOffset, littleEndian)
+  for (let index = 0; index < entryCount; index += 1) {
+    const entryOffset = ifdOffset + 2 + index * 12
+    if (entryOffset + 12 > view.byteLength) {
+      break
+    }
+
+    const tag = view.getUint16(entryOffset, littleEndian)
+    if (tag !== targetTag) {
+      continue
+    }
+
+    const type = view.getUint16(entryOffset + 2, littleEndian)
+    const count = view.getUint32(entryOffset + 4, littleEndian)
+    if (type !== 4 || count !== 1) {
+      return null
+    }
+
+    return view.getUint32(entryOffset + 8, littleEndian)
+  }
+
+  return null
+}
+
+function extractExifCapturedAt(fileBuffer) {
+  const view = new DataView(fileBuffer)
+  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) {
+    return null
+  }
+
+  let offset = 2
+  while (offset + 4 <= view.byteLength) {
+    if (view.getUint8(offset) !== 0xff) {
+      break
+    }
+
+    const marker = view.getUint8(offset + 1)
+    if (marker === 0xda || marker === 0xd9) {
+      break
+    }
+
+    const segmentLength = view.getUint16(offset + 2, false)
+    if (segmentLength < 2 || offset + 2 + segmentLength > view.byteLength) {
+      break
+    }
+
+    if (marker === 0xe1) {
+      const exifHeaderOffset = offset + 4
+      if (readAsciiValue(view, exifHeaderOffset, 6) === 'Exif') {
+        const tiffStart = exifHeaderOffset + 6
+        const endianMarker = readAsciiValue(view, tiffStart, 2)
+        const littleEndian =
+          endianMarker === 'II' ? true : endianMarker === 'MM' ? false : null
+
+        if (littleEndian == null || view.getUint16(tiffStart + 2, littleEndian) !== 42) {
+          return null
+        }
+
+        const firstIfdOffset = tiffStart + view.getUint32(tiffStart + 4, littleEndian)
+        const exifIfdPointer = readExifLongTag(view, firstIfdOffset, littleEndian, 0x8769)
+
+        const exifDateValue =
+          (Number.isFinite(exifIfdPointer)
+            ? readExifAsciiTag(
+                view,
+                tiffStart,
+                tiffStart + exifIfdPointer,
+                littleEndian,
+                0x9003,
+              )
+            : '') ||
+          readExifAsciiTag(view, tiffStart, firstIfdOffset, littleEndian, 0x0132)
+
+        return parseExifDateTimeString(exifDateValue)
+      }
+    }
+
+    offset += 2 + segmentLength
+  }
+
+  return null
+}
+
+async function readImageCapturedAtValue(file) {
+  if (!file) {
+    return ''
+  }
+
+  try {
+    const exifDate = extractExifCapturedAt(await file.arrayBuffer())
+    if (exifDate) {
+      return formatImageCapturedAtValue(exifDate)
+    }
+  } catch {
+    // Fall back to file metadata if EXIF cannot be read.
+  }
+
+  if (Number.isFinite(file.lastModified) && file.lastModified > 0) {
+    return formatImageCapturedAtValue(new Date(file.lastModified))
+  }
+
+  return ''
+}
+
 function toEditorQuestion(question, index) {
   const normalized = normalizeQuestion(question, index)
   return {
@@ -317,7 +531,7 @@ function normalizeImageZoom(rawZoom) {
 function normalizeQuestion(question, index) {
   const label = String(question?.label || '').trim()
   const fallbackLabel = `Spørsmål ${index + 1}`
-  const type = ['text', 'textarea', 'select', 'location', 'number', 'date', 'camera', 'name', 'email', 'section'].includes(question?.type)
+  const type = ['text', 'textarea', 'select', 'location', 'number', 'date', 'camera', 'name', 'phone', 'email', 'section'].includes(question?.type)
     ? question.type
     : 'text'
   const options = type === 'select' ? parseQuestionOptions(question?.options) : []
@@ -365,6 +579,7 @@ function normalizeQuestion(question, index) {
     imageZoom: normalizeImageZoom(question?.imageZoom),
     includeInAnalysis: type === 'section' ? false : Boolean(question?.includeInAnalysis),
     includeInReview: type === 'section' ? false : Boolean(question?.includeInReview),
+    shouldRestock: type === 'section' ? false : Boolean(question?.shouldRestock),
     reviewHelpText: type === 'section' ? '' : String(question?.reviewHelpText || '').trim(),
     analysisLabel: type === 'section' ? '' : String(question?.analysisLabel || '').trim(),
     deliveryUnlimited: type === 'select' ? Boolean(question?.deliveryUnlimited) || !question?.deliveryMaxUnits : true,
@@ -467,6 +682,11 @@ function getSubmissionName(answers, questions = []) {
     return String(answers[nameQuestion.id]).trim()
   }
 
+  const phoneQuestion = questions.find((question) => question.type === 'phone')
+  if (phoneQuestion?.id && answers?.[phoneQuestion.id] && String(answers[phoneQuestion.id]).trim()) {
+    return String(answers[phoneQuestion.id]).trim()
+  }
+
   const candidates = ['navn', 'name', 'fullName', 'fullname']
   for (const key of candidates) {
     if (answers?.[key] && String(answers[key]).trim()) {
@@ -547,7 +767,14 @@ function isQuestionVisibleForLocation(question, selectedLocationName) {
 function getVisibleFormQuestions(questions = [], selectedLocationName = '') {
   return questions.filter((question, index) => {
     if (isSectionQuestion(question)) {
-      for (let nextIndex = index + 1; nextIndex < questions.length; nextIndex += 1) {
+      let nextIndex = index + 1
+
+      // Allow multiple consecutive section headers to stack above the same question group.
+      while (nextIndex < questions.length && isSectionQuestion(questions[nextIndex])) {
+        nextIndex += 1
+      }
+
+      for (; nextIndex < questions.length; nextIndex += 1) {
         const nextQuestion = questions[nextIndex]
         if (isSectionQuestion(nextQuestion)) {
           break
@@ -930,26 +1157,40 @@ function getHistoryAnswerValues(submission, question) {
 }
 
 function getAnswerDisplayLabel(answerKey, answers, questions = []) {
-  const detailQuestionId = answerKey.endsWith(SELECT_DETAIL_SUFFIX)
-    ? answerKey.slice(0, -SELECT_DETAIL_SUFFIX.length)
+  const capturedAtBaseKey = answerKey.endsWith(IMAGE_CAPTURED_AT_SUFFIX)
+    ? answerKey.slice(0, -IMAGE_CAPTURED_AT_SUFFIX.length)
+    : ''
+  const normalizedKey = capturedAtBaseKey || answerKey
+  const detailQuestionId = normalizedKey.endsWith(SELECT_DETAIL_SUFFIX)
+    ? normalizedKey.slice(0, -SELECT_DETAIL_SUFFIX.length)
     : ''
 
   if (detailQuestionId) {
     const question = questions.find((item) => item.id === detailQuestionId)
     const selectedOption = answers?.[detailQuestionId]
-    return question
-      ? `${question.label} - utdyping${selectedOption ? ` (${selectedOption})` : ''}`
-      : answerKey
+    if (!question) {
+      return answerKey
+    }
+
+    const detailLabel = `${question.label} - utdyping${selectedOption ? ` (${selectedOption})` : ''}`
+    return capturedAtBaseKey ? `${detailLabel} - bildetidspunkt` : detailLabel
   }
 
-  const question = questions.find((item) => item.id === answerKey)
-  return question?.label || answerKey
+  const question = questions.find((item) => item.id === normalizedKey)
+  if (!question) {
+    return answerKey
+  }
+
+  return capturedAtBaseKey ? `${question.label} - bildetidspunkt` : question.label
 }
 
 function getQuestionForAnswerKey(answerKey, questions = []) {
-  const detailQuestionId = answerKey.endsWith(SELECT_DETAIL_SUFFIX)
-    ? answerKey.slice(0, -SELECT_DETAIL_SUFFIX.length)
+  const normalizedKey = answerKey.endsWith(IMAGE_CAPTURED_AT_SUFFIX)
+    ? answerKey.slice(0, -IMAGE_CAPTURED_AT_SUFFIX.length)
     : answerKey
+  const detailQuestionId = normalizedKey.endsWith(SELECT_DETAIL_SUFFIX)
+    ? normalizedKey.slice(0, -SELECT_DETAIL_SUFFIX.length)
+    : normalizedKey
 
   return questions.find((item) => item.id === detailQuestionId) || null
 }
@@ -970,11 +1211,28 @@ function getOrderedAnswerEntries(answers, questions = [], options = {}) {
       usedKeys.add(question.id)
     }
 
+    const capturedAtKey = getImageCapturedAtAnswerKey(question.id)
+    const capturedAtValue = answers?.[capturedAtKey]
+    if (typeof capturedAtValue !== 'undefined' && String(capturedAtValue || '').trim()) {
+      entries.push([capturedAtKey, capturedAtValue])
+      usedKeys.add(capturedAtKey)
+    }
+
     const detailKey = getSelectDetailAnswerKey(question.id)
     const detailValue = answers?.[detailKey]
     if (typeof detailValue !== 'undefined' && String(detailValue || '').trim()) {
       entries.push([detailKey, detailValue])
       usedKeys.add(detailKey)
+    }
+
+    const detailCapturedAtKey = getImageCapturedAtAnswerKey(detailKey)
+    const detailCapturedAtValue = answers?.[detailCapturedAtKey]
+    if (
+      typeof detailCapturedAtValue !== 'undefined' &&
+      String(detailCapturedAtValue || '').trim()
+    ) {
+      entries.push([detailCapturedAtKey, detailCapturedAtValue])
+      usedKeys.add(detailCapturedAtKey)
     }
   })
 
@@ -1025,6 +1283,7 @@ function createEditorQuestion(seed) {
     imageZoom: 1,
     includeInAnalysis: false,
     includeInReview: false,
+    shouldRestock: false,
     reviewHelpText: '',
     analysisLabel: '',
     deliveryUnlimited: true,
@@ -1067,6 +1326,8 @@ function readFormDraft(formSlug) {
         answers: {},
         locationOtherAnswers: {},
         selectDetailAnswers: {},
+        cameraCapturedAt: {},
+        selectDetailCapturedAt: {},
         selfDeclarationAccepted: false,
       }
     }
@@ -1082,6 +1343,14 @@ function readFormDraft(formSlug) {
         parsed?.selectDetailAnswers && typeof parsed.selectDetailAnswers === 'object'
           ? parsed.selectDetailAnswers
           : {},
+      cameraCapturedAt:
+        parsed?.cameraCapturedAt && typeof parsed.cameraCapturedAt === 'object'
+          ? parsed.cameraCapturedAt
+          : {},
+      selectDetailCapturedAt:
+        parsed?.selectDetailCapturedAt && typeof parsed.selectDetailCapturedAt === 'object'
+          ? parsed.selectDetailCapturedAt
+          : {},
       selfDeclarationAccepted: Boolean(parsed?.selfDeclarationAccepted),
     }
   } catch {
@@ -1089,6 +1358,8 @@ function readFormDraft(formSlug) {
       answers: {},
       locationOtherAnswers: {},
       selectDetailAnswers: {},
+      cameraCapturedAt: {},
+      selectDetailCapturedAt: {},
       selfDeclarationAccepted: false,
     }
   }
@@ -1208,9 +1479,11 @@ function FormPage() {
   const [selectDetailAnswers, setSelectDetailAnswers] = useState({})
   const [selectDetailFiles, setSelectDetailFiles] = useState({})
   const [selectDetailPreviews, setSelectDetailPreviews] = useState({})
+  const [selectDetailCapturedAt, setSelectDetailCapturedAt] = useState({})
   const [selfDeclarationAccepted, setSelfDeclarationAccepted] = useState(false)
   const [cameraFiles, setCameraFiles] = useState({})
   const [cameraPreviews, setCameraPreviews] = useState({})
+  const [cameraCapturedAt, setCameraCapturedAt] = useState({})
   const [formInstanceKey, setFormInstanceKey] = useState(0)
   const [loadingForm, setLoadingForm] = useState(true)
   const [availableLocations, setAvailableLocations] = useState([])
@@ -1234,6 +1507,7 @@ function FormPage() {
   const [editorSelfDeclarationText, setEditorSelfDeclarationText] = useState(
     defaultStengeskjema.selfDeclarationText || '',
   )
+  const [editorEditMode, setEditorEditMode] = useState(true)
   const [editorQuestions, setEditorQuestions] = useState(
     defaultStengeskjema.questions.map((item, index) => toEditorQuestion(item, index)),
   )
@@ -1582,6 +1856,20 @@ function FormPage() {
         return accumulator
       }, {})
 
+      const nextSelectDetailCapturedAt = formData.questions.reduce((accumulator, question) => {
+        if (isSectionQuestion(question) || question.type !== 'select') {
+          return accumulator
+        }
+
+        const storedValue = String(
+          receiptAnswers[getImageCapturedAtAnswerKey(getSelectDetailAnswerKey(question.id))] || '',
+        ).trim()
+        if (storedValue) {
+          accumulator[question.id] = storedValue
+        }
+        return accumulator
+      }, {})
+
       const nextCameraPreviews = formData.questions.reduce((accumulator, question) => {
         if (isSectionQuestion(question) || question.type !== 'camera') {
           return accumulator
@@ -1597,13 +1885,27 @@ function FormPage() {
         return accumulator
       }, {})
 
+      const nextCameraCapturedAt = formData.questions.reduce((accumulator, question) => {
+        if (isSectionQuestion(question) || question.type !== 'camera') {
+          return accumulator
+        }
+
+        const storedValue = String(receiptAnswers[getImageCapturedAtAnswerKey(question.id)] || '').trim()
+        if (storedValue) {
+          accumulator[question.id] = storedValue
+        }
+        return accumulator
+      }, {})
+
       setAnswers(nextAnswers)
       setLocationOtherAnswers(nextLocationOtherAnswers)
       setSelectDetailAnswers(nextSelectDetailAnswers)
       setSelectDetailFiles({})
       setSelectDetailPreviews(nextSelectDetailPreviews)
+      setSelectDetailCapturedAt(nextSelectDetailCapturedAt)
       setCameraFiles({})
       setCameraPreviews(nextCameraPreviews)
+      setCameraCapturedAt(nextCameraCapturedAt)
       setSelfDeclarationAccepted(Boolean(receiptAnswers[SELF_DECLARATION_ACCEPTED_KEY]))
       setHydratedEditReceiptToken(editReceiptToken)
       setDraftReady(true)
@@ -1647,9 +1949,33 @@ function FormPage() {
       return accumulator
     }, {})
 
+    const nextSelectDetailCapturedAt = formData.questions.reduce((accumulator, question) => {
+      if (isSectionQuestion(question) || question.type !== 'select') {
+        return accumulator
+      }
+      const storedValue = draft.selectDetailCapturedAt?.[question.id]
+      if (typeof storedValue !== 'undefined') {
+        accumulator[question.id] = String(storedValue)
+      }
+      return accumulator
+    }, {})
+
+    const nextCameraCapturedAt = formData.questions.reduce((accumulator, question) => {
+      if (isSectionQuestion(question) || question.type !== 'camera') {
+        return accumulator
+      }
+      const storedValue = draft.cameraCapturedAt?.[question.id]
+      if (typeof storedValue !== 'undefined') {
+        accumulator[question.id] = String(storedValue)
+      }
+      return accumulator
+    }, {})
+
     setAnswers(nextAnswers)
     setLocationOtherAnswers(nextLocationOtherAnswers)
     setSelectDetailAnswers(nextSelectDetailAnswers)
+    setSelectDetailCapturedAt(nextSelectDetailCapturedAt)
+    setCameraCapturedAt(nextCameraCapturedAt)
     setSelfDeclarationAccepted(
       Boolean(formData.enableSelfDeclaration) && Boolean(draft.selfDeclarationAccepted),
     )
@@ -1716,15 +2042,40 @@ function FormPage() {
       return accumulator
     }, {})
 
+    const normalizedSelectDetailCapturedAt = formData.questions.reduce((accumulator, question) => {
+      if (
+        !isSectionQuestion(question) &&
+        question.type === 'select' &&
+        typeof selectDetailCapturedAt[question.id] !== 'undefined'
+      ) {
+        accumulator[question.id] = String(selectDetailCapturedAt[question.id] || '')
+      }
+      return accumulator
+    }, {})
+
+    const normalizedCameraCapturedAt = formData.questions.reduce((accumulator, question) => {
+      if (
+        !isSectionQuestion(question) &&
+        question.type === 'camera' &&
+        typeof cameraCapturedAt[question.id] !== 'undefined'
+      ) {
+        accumulator[question.id] = String(cameraCapturedAt[question.id] || '')
+      }
+      return accumulator
+    }, {})
+
     writeFormDraft(activeFormSlug, {
       answers: normalizedAnswers,
       locationOtherAnswers: normalizedLocationOtherAnswers,
       selectDetailAnswers: normalizedSelectDetailAnswers,
+      selectDetailCapturedAt: normalizedSelectDetailCapturedAt,
+      cameraCapturedAt: normalizedCameraCapturedAt,
       selfDeclarationAccepted,
     })
   }, [
     activeFormSlug,
     answers,
+    cameraCapturedAt,
     draftReady,
     formData.questions,
     isDeliverySettingsView,
@@ -1738,6 +2089,7 @@ function FormPage() {
     isSubmissionsView,
     loadingForm,
     locationOtherAnswers,
+    selectDetailCapturedAt,
     selectDetailAnswers,
     selfDeclarationAccepted,
   ])
@@ -2076,9 +2428,13 @@ function FormPage() {
         .map((question) => question.id),
     )
 
-    setSelectedHistoryQuestionIds((previous) =>
-      previous.filter((questionId) => validQuestionIds.has(questionId)),
-    )
+    setSelectedHistoryQuestionIds((previous) => {
+      const next = previous.filter((questionId) => validQuestionIds.has(questionId))
+      if (next.length === previous.length && next.every((questionId, index) => questionId === previous[index])) {
+        return previous
+      }
+      return next
+    })
   }, [formData.questions])
 
   useEffect(() => {
@@ -2089,9 +2445,12 @@ function FormPage() {
   }, [isHistoryView])
 
   function onAnswerChange(questionId, value) {
+    const question = formData.questions.find((item) => item.id === questionId)
+    const nextValue = question?.type === 'phone' ? normalizeNorwegianPhoneNumber(value) : value
+
     setAnswers((previous) => ({
       ...previous,
-      [questionId]: value,
+      [questionId]: nextValue,
     }))
   }
 
@@ -2100,6 +2459,14 @@ function FormPage() {
       ...previous,
       [questionId]: file,
     }))
+    setCameraCapturedAt((previous) => {
+      if (typeof previous[questionId] === 'undefined') {
+        return previous
+      }
+      const next = { ...previous }
+      delete next[questionId]
+      return next
+    })
     onAnswerChange(questionId, file ? file.name : '')
 
     if (!file) {
@@ -2116,10 +2483,20 @@ function FormPage() {
 
     try {
       const previewUrl = await readFileAsDataUrl(file)
+      const capturedAtValue =
+        isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
       setCameraPreviews((previous) => ({
         ...previous,
         [questionId]: previewUrl,
       }))
+      setCameraCapturedAt((previous) =>
+        capturedAtValue
+          ? {
+              ...previous,
+              [questionId]: capturedAtValue,
+            }
+          : previous,
+      )
     } catch {
       setCameraPreviews((previous) => {
         if (typeof previous[questionId] === 'undefined') {
@@ -2137,6 +2514,14 @@ function FormPage() {
       ...previous,
       [questionId]: file,
     }))
+    setSelectDetailCapturedAt((previous) => {
+      if (typeof previous[questionId] === 'undefined') {
+        return previous
+      }
+      const next = { ...previous }
+      delete next[questionId]
+      return next
+    })
 
     if (!file) {
       setSelectDetailPreviews((previous) => {
@@ -2152,10 +2537,20 @@ function FormPage() {
 
     try {
       const previewUrl = await readFileAsDataUrl(file)
+      const capturedAtValue =
+        isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
       setSelectDetailPreviews((previous) => ({
         ...previous,
         [questionId]: previewUrl,
       }))
+      setSelectDetailCapturedAt((previous) =>
+        capturedAtValue
+          ? {
+              ...previous,
+              [questionId]: capturedAtValue,
+            }
+          : previous,
+      )
     } catch {
       setSelectDetailPreviews((previous) => {
         if (typeof previous[questionId] === 'undefined') {
@@ -2187,14 +2582,16 @@ function FormPage() {
     setSelectDetailAnswers({})
     setSelectDetailFiles({})
     setSelectDetailPreviews({})
+    setSelectDetailCapturedAt({})
     setSelfDeclarationAccepted(false)
     setCameraFiles({})
     setCameraPreviews({})
+    setCameraCapturedAt({})
     setFormInstanceKey((previous) => previous + 1)
     clearFormDraft(activeFormSlug)
     setSubmitState({
       submitting: false,
-      message: 'Alle svar er nullstilt.',
+      message: '',
       error: '',
     })
   }
@@ -2260,6 +2657,31 @@ function FormPage() {
       return
     }
 
+    const invalidPhoneQuestion = visibleInputQuestions.find((question) => {
+      if (question.type !== 'phone') {
+        return false
+      }
+
+      const answerValue = String(answers[question.id] || '').trim()
+      if (!answerValue) {
+        return false
+      }
+
+      return !isValidNorwegianPhoneNumber(answerValue)
+    })
+
+    if (invalidPhoneQuestion) {
+      setSubmitState({
+        submitting: false,
+        message: '',
+        error:
+          displayLanguage === 'en'
+            ? `${translateText(invalidPhoneQuestion.label)}: ${publicCopy.phoneMustBeEightDigits}`
+            : `${invalidPhoneQuestion.label}: ${publicCopy.phoneMustBeEightDigits}`,
+      })
+      return
+    }
+
     if (isSubmissionEditMode) {
       const editState = getReceiptEditState(receiptSubmission?.submittedAtIso)
       if (!receiptSubmission?.submissionId) {
@@ -2316,6 +2738,11 @@ function FormPage() {
             submissionAnswers[getSelectDetailAnswerKey(question.id)] = detailValue
           }
           if (selectedBehavior.kind === 'camera') {
+            const detailCapturedAtValue = String(selectDetailCapturedAt[question.id] || '').trim()
+            if (detailCapturedAtValue) {
+              submissionAnswers[getImageCapturedAtAnswerKey(getSelectDetailAnswerKey(question.id))] =
+                detailCapturedAtValue
+            }
             const file = selectDetailFiles[question.id]
             if (file) {
               const fileName = sanitizeFileName(file.name)
@@ -2344,6 +2771,10 @@ function FormPage() {
         visibleInputQuestions.map(async (question) => {
           if (question.type !== 'camera') {
             return
+          }
+          const capturedAtValue = String(cameraCapturedAt[question.id] || '').trim()
+          if (capturedAtValue) {
+            submissionAnswers[getImageCapturedAtAnswerKey(question.id)] = capturedAtValue
           }
           const file = cameraFiles[question.id]
           if (!file) {
@@ -2484,9 +2915,11 @@ function FormPage() {
       setSelectDetailAnswers({})
       setSelectDetailFiles({})
       setSelectDetailPreviews({})
+      setSelectDetailCapturedAt({})
       setSelfDeclarationAccepted(false)
       setCameraFiles({})
       setCameraPreviews({})
+      setCameraCapturedAt({})
       setFormInstanceKey((previous) => previous + 1)
       setSubmitState({
         submitting: false,
@@ -2590,6 +3023,7 @@ function FormPage() {
             type: value,
             required: value === 'section' ? false : question.required,
             includeInReview: value === 'section' ? false : question.includeInReview,
+            shouldRestock: value === 'section' ? false : question.shouldRestock,
             deliveryUnlimited: value === 'select' ? question.deliveryUnlimited : true,
             deliveryMaxUnits: value === 'select' ? question.deliveryMaxUnits : '',
             imageUrl: question.imageUrl,
@@ -2776,6 +3210,7 @@ function FormPage() {
         imageUrl: '',
         imageZoom: 1,
         includeInAnalysis: false,
+        shouldRestock: false,
         deliveryUnlimited: true,
         deliveryMaxUnits: '',
         helpTextColor: '',
@@ -3667,6 +4102,14 @@ function FormPage() {
                   delete next[question.id]
                   return next
                 })
+                setSelectDetailCapturedAt((previous) => {
+                  if (typeof previous[question.id] === 'undefined') {
+                    return previous
+                  }
+                  const next = { ...previous }
+                  delete next[question.id]
+                  return next
+                })
               }
             }}
           >
@@ -3862,6 +4305,26 @@ function FormPage() {
       )
     }
 
+    if (question.type === 'phone') {
+      return (
+        <>
+          <input
+            id={question.id}
+            type="tel"
+            value={normalizeNorwegianPhoneNumber(value)}
+            placeholder={getLocalizedInputPlaceholder(question, publicCopy.phoneNumberPlaceholder)}
+            inputMode="numeric"
+            autoComplete="tel-national"
+            pattern="[0-9]{8}"
+            maxLength={8}
+            required={question.required}
+            onChange={(event) => onAnswerChange(question.id, event.target.value)}
+          />
+          <small className="question-help">{publicCopy.phoneNumberHelp}</small>
+        </>
+      )
+    }
+
     if (question.type === 'email') {
       return (
         <input
@@ -3918,6 +4381,11 @@ function FormPage() {
         return String(locationOtherAnswers[question.id] || '').trim().length > 0
       }
       return String(answers[question.id] || '').trim().length > 0
+    }
+
+    if (question.type === 'phone') {
+      const answerValue = String(answers[question.id] || '').trim()
+      return isValidNorwegianPhoneNumber(answerValue)
     }
 
     return String(answers[question.id] || '').trim().length > 0
@@ -4211,12 +4679,20 @@ function FormPage() {
 
   useEffect(() => {
     const nextDefault = Math.max(1, Number.parseInt(formData.analysisDefaultSubmissionLimit, 10) || 3)
-    setHistorySubmissionLimit(String(nextDefault))
+    setHistorySubmissionLimit((previous) => {
+      const nextValue = String(nextDefault)
+      return previous === nextValue ? previous : nextValue
+    })
   }, [formData.analysisDefaultSubmissionLimit])
 
   useEffect(() => {
     if (flaggedSubmissions.length === 0) {
-      setFlaggedImageUrls({})
+      setFlaggedImageUrls((previous) => {
+        if (Object.keys(previous).length === 0) {
+          return previous
+        }
+        return {}
+      })
       return
     }
 
@@ -4239,10 +4715,20 @@ function FormPage() {
         return
       }
 
-      setFlaggedImageUrls((previous) => ({
-        ...previous,
-        ...Object.fromEntries(pairs),
-      }))
+      const nextEntries = Object.fromEntries(pairs)
+      setFlaggedImageUrls((previous) => {
+        let hasChange = false
+        const next = { ...previous }
+
+        Object.entries(nextEntries).forEach(([path, url]) => {
+          if (next[path] !== url) {
+            next[path] = url
+            hasChange = true
+          }
+        })
+
+        return hasChange ? next : previous
+      })
     })
 
     return () => {
@@ -4279,9 +4765,13 @@ function FormPage() {
 
   useEffect(() => {
     const validLocations = new Set(historyRows.map((row) => row.location))
-    setSelectedHistoryLocations((previous) =>
-      previous.filter((location) => validLocations.has(location)),
-    )
+    setSelectedHistoryLocations((previous) => {
+      const next = previous.filter((location) => validLocations.has(location))
+      if (next.length === previous.length && next.every((location, index) => location === previous[index])) {
+        return previous
+      }
+      return next
+    })
   }, [historyRows])
 
   let publicQuestionOrder = 0
@@ -4322,7 +4812,7 @@ function FormPage() {
                   <strong>Vogn:</strong> {getSubmissionLocation(submission.answers, formData.questions)}
                 </p>
                 <p>
-                  <strong>Navn:</strong> {getSubmissionName(submission.answers, formData.questions)}
+                  <strong>Navn / telefon:</strong> {getSubmissionName(submission.answers, formData.questions)}
                 </p>
                 <p>
                   <strong>Lokasjon:</strong> {getSubmissionPlace(submission.answers)}
@@ -4589,6 +5079,22 @@ function FormPage() {
             ))}
           </div>
         ) : null}
+      </div>
+    )
+  }
+
+  function renderEditorQuestionSummaryList() {
+    return (
+      <div className="editor-question-summary-list">
+        {editorQuestions.map((question, index) => (
+          <div
+            key={`${question.id}-${index}-summary`}
+            className={`editor-question-summary-row${isSectionQuestion(question) ? ' is-section' : ''}`}
+          >
+            <strong className="editor-question-summary-number">Spørsmål {index + 1}</strong>
+            <span className="editor-question-summary-label">{question.label || `Spørsmål ${index + 1}`}</span>
+          </div>
+        ))}
       </div>
     )
   }
@@ -4882,7 +5388,27 @@ function FormPage() {
               renderDeliverySettingsPage()
             ) : isEditPage ? (
               <div className="admin-editor">
-                <h3>Rediger skjema</h3>
+                <div className="editor-mode-header">
+                  <h3>Rediger skjema</h3>
+                  <div className="editor-mode-switch" role="group" aria-label="Visningsmodus">
+                    <button
+                      type="button"
+                      className={!editorEditMode ? 'is-active' : ''}
+                      onClick={() => setEditorEditMode(false)}
+                    >
+                      Ikke edit mode
+                    </button>
+                    <button
+                      type="button"
+                      className={editorEditMode ? 'is-active' : ''}
+                      onClick={() => setEditorEditMode(true)}
+                    >
+                      Edit-mode
+                    </button>
+                  </div>
+                </div>
+                {editorEditMode ? (
+                <>
                 <label className="field-block" htmlFor="editor-title">
                   <span>Tittel</span>
                   <input
@@ -4986,6 +5512,7 @@ function FormPage() {
                                 <option value="date">Dato</option>
                                 <option value="camera">Ta bilde fra kamera</option>
                                 <option value="name">User's name</option>
+                                <option value="phone">Telefonnummer</option>
                                 <option value="email">E-post</option>
                                 <option value="section">Kategori</option>
                               </select>
@@ -5269,6 +5796,20 @@ function FormPage() {
                                   />
                                   Skal vurderes
                                 </label>
+                                <label
+                                  className="checkbox-inline editor-settings-toggle-cell"
+                                  htmlFor={`q-restock-${index}`}
+                                >
+                                  <input
+                                    id={`q-restock-${index}`}
+                                    type="checkbox"
+                                    checked={Boolean(question.shouldRestock)}
+                                    onChange={(event) =>
+                                      onEditorQuestionChange(index, 'shouldRestock', event.target.checked)
+                                    }
+                                  />
+                                  Skal fylles på
+                                </label>
                               </div>
                               <div className="editor-settings-detail-row">
                                 <div
@@ -5511,6 +6052,10 @@ function FormPage() {
                     Legg til kategori
                   </button>
                 </div>
+                </>
+                ) : (
+                  renderEditorQuestionSummaryList()
+                )}
 
                 {saveState.error ? <p className="forms-error">{saveState.error}</p> : null}
                 {saveState.message ? <p className="forms-success">{saveState.message}</p> : null}
@@ -5667,7 +6212,7 @@ function FormPage() {
               <div className="history-overview" id="history-section">
                 <div className="history-header">
                   <div className="history-title-block">
-                    <h3>Analyse</h3>
+                    <h3>Varebeholdning</h3>
                     <p className="history-legend">
                       <strong>Oransje:</strong> Bestill opp mer.{' '}
                       <strong>Rød:</strong> Nesten helt tomt.

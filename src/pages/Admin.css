@@ -328,6 +328,170 @@
   cursor: not-allowed;
 }
 
+.admin-location-settings-list {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-supplier-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-supplier-create-row {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-supplier-name-field,
+.admin-supplier-days-block,
+.admin-supplier-select-field {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-supplier-name-field input,
+.admin-supplier-select-field select {
+  width: min(100%, 360px);
+  min-height: 42px;
+  border: 1px solid rgba(24, 44, 60, 0.35);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #163042;
+  font: inherit;
+}
+
+.admin-supplier-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-supplier-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(19, 38, 53, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.admin-supplier-card p {
+  margin: 0;
+}
+
+.admin-supplier-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-supplier-card-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-location-settings-card {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid rgba(19, 38, 53, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.admin-location-settings-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+.admin-location-settings-header p {
+  margin: 4px 0 0;
+}
+
+.admin-location-product-list {
+  display: grid;
+  gap: 0;
+}
+
+.admin-location-product-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(19, 38, 53, 0.1);
+}
+
+.admin-location-product-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.admin-location-product-copy {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.admin-location-product-copy p {
+  margin: 0;
+}
+
+.admin-location-product-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-weekday-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-weekday-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid rgba(19, 38, 53, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #163042;
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.admin-weekday-chip input {
+  margin: 0;
+}
+
+.admin-weekday-chip span {
+  line-height: 1;
+}
+
+.admin-self-purchase-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: #163042;
+  font-weight: 600;
+}
+
+.admin-self-purchase-toggle input {
+  margin: 0;
+}
+
+.admin-derived-delivery-text {
+  margin: -2px 0 0;
+}
+
 @media (max-width: 640px) {
   .admin-page {
     width: 100%;
@@ -353,5 +517,30 @@
 
   .admin-email-actions {
     white-space: normal;
+  }
+
+  .admin-location-settings-card {
+    padding: 14px;
+  }
+
+  .admin-location-product-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .admin-weekday-list {
+    gap: 6px;
+  }
+
+  .admin-weekday-chip {
+    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 0.88rem;
+  }
+
+  .admin-supplier-name-field input,
+  .admin-supplier-select-field select {
+    width: 100%;
   }
 }

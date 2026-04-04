@@ -60,6 +60,11 @@ service cloud.firestore {
       allow create, update, delete: if isCrustUser();
     }
 
+    match /suppliers/{docId} {
+      allow read: if isCrustUser();
+      allow create, update, delete: if isCrustUser();
+    }
+
     match /integrations/{docId} {
       allow read: if isCrustUser();
       allow create, update, delete: if false;

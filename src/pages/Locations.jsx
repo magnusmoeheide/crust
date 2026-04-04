@@ -22,8 +22,10 @@ import foodtruck1200 from "../assets/optimized/foodtruck-1200.png";
 const emptyLocationForm = {
   name: "",
   city: "",
-  weekdayHours: "",
-  weekendHours: "",
+  weekdayOrderDeadline: "",
+  weekdayDeliveryTime: "",
+  weekendOrderDeadline: "",
+  weekendDeliveryTime: "",
   mapUrl: "",
   imageUrl: "",
   order: "",
@@ -78,6 +80,54 @@ function getLocationErrorMessage(error, fallbackMessage) {
     return "Ukjent Storage-feil under opplasting.";
   }
   return code ? `${fallbackMessage} (${code})` : fallbackMessage;
+}
+
+function getLocationScheduleEntries(location) {
+  const entries = [];
+
+  if (location?.weekdayOrderDeadline) {
+    entries.push({
+      label: "Bestillingsfrist ukedag",
+      value: location.weekdayOrderDeadline,
+    });
+  }
+  if (location?.weekdayDeliveryTime) {
+    entries.push({
+      label: "Leveringstid ukedag",
+      value: location.weekdayDeliveryTime,
+    });
+  }
+  if (location?.weekendOrderDeadline) {
+    entries.push({
+      label: "Bestillingsfrist helg",
+      value: location.weekendOrderDeadline,
+    });
+  }
+  if (location?.weekendDeliveryTime) {
+    entries.push({
+      label: "Leveringstid helg",
+      value: location.weekendDeliveryTime,
+    });
+  }
+
+  if (entries.length > 0) {
+    return entries;
+  }
+
+  if (location?.weekdayHours) {
+    entries.push({
+      label: "Ukedag",
+      value: location.weekdayHours,
+    });
+  }
+  if (location?.weekendHours) {
+    entries.push({
+      label: "Helg",
+      value: location.weekendHours,
+    });
+  }
+
+  return entries;
 }
 
 function Locations() {
@@ -187,8 +237,10 @@ function Locations() {
         name: newLocation.name.trim(),
         city: newLocation.city.trim(),
         address: newLocation.city.trim(),
-        weekdayHours: newLocation.weekdayHours.trim(),
-        weekendHours: newLocation.weekendHours.trim(),
+        weekdayOrderDeadline: newLocation.weekdayOrderDeadline.trim(),
+        weekdayDeliveryTime: newLocation.weekdayDeliveryTime.trim(),
+        weekendOrderDeadline: newLocation.weekendOrderDeadline.trim(),
+        weekendDeliveryTime: newLocation.weekendDeliveryTime.trim(),
         mapUrl: normalizeUrl(newLocation.mapUrl),
         imageUrl,
         order: newLocation.order.trim() ? Number(newLocation.order) : null,
@@ -217,8 +269,10 @@ function Locations() {
     setEditLocation({
       name: location.name || "",
       city: location.city || location.address || "",
-      weekdayHours: location.weekdayHours || "",
-      weekendHours: location.weekendHours || "",
+      weekdayOrderDeadline: location.weekdayOrderDeadline || "",
+      weekdayDeliveryTime: location.weekdayDeliveryTime || "",
+      weekendOrderDeadline: location.weekendOrderDeadline || "",
+      weekendDeliveryTime: location.weekendDeliveryTime || "",
       mapUrl: location.mapUrl || "",
       imageUrl: location.imageUrl || "",
       order: location.order == null ? "" : String(location.order),
@@ -252,8 +306,10 @@ function Locations() {
         name: editLocation.name.trim(),
         city: editLocation.city.trim(),
         address: editLocation.city.trim(),
-        weekdayHours: editLocation.weekdayHours.trim(),
-        weekendHours: editLocation.weekendHours.trim(),
+        weekdayOrderDeadline: editLocation.weekdayOrderDeadline.trim(),
+        weekdayDeliveryTime: editLocation.weekdayDeliveryTime.trim(),
+        weekendOrderDeadline: editLocation.weekendOrderDeadline.trim(),
+        weekendDeliveryTime: editLocation.weekendDeliveryTime.trim(),
         mapUrl: normalizeUrl(editLocation.mapUrl),
         imageUrl,
         order: editLocation.order.trim() ? Number(editLocation.order) : null,
@@ -343,8 +399,11 @@ function Locations() {
               <FontAwesomeIcon icon={faLocationDot} />{" "}
               {location.city || location.address || "Ukjent by"}
             </p>
-            {location.weekdayHours ? <p>{location.weekdayHours}</p> : null}
-            {location.weekendHours ? <p>{location.weekendHours}</p> : null}
+            {getLocationScheduleEntries(location).map((entry) => (
+              <p key={`${location.id}-${entry.label}`} className="location-schedule-entry">
+                <strong>{entry.label}:</strong> {entry.value}
+              </p>
+            ))}
             {location.mapUrl ? (
               <a
                 className="ghost location-cta"
@@ -445,39 +504,77 @@ function Locations() {
 
                     <label
                       className="field-block"
-                      htmlFor="location-weekday-hours"
+                      htmlFor="location-weekday-order-deadline"
                     >
-                      <span>Åpningstid ukedag</span>
+                      <span>Bestillingsfrist ukedag</span>
                       <input
-                        id="location-weekday-hours"
+                        id="location-weekday-order-deadline"
                         type="text"
-                        value={newLocation.weekdayHours}
+                        value={newLocation.weekdayOrderDeadline}
                         onChange={(event) =>
                           setNewLocation((previous) => ({
                             ...previous,
-                            weekdayHours: event.target.value,
+                            weekdayOrderDeadline: event.target.value,
                           }))
                         }
-                        placeholder="Man-Fre: 11:00-21:00"
+                        placeholder="Man-Fre: kl. 10:00"
                       />
                     </label>
 
                     <label
                       className="field-block"
-                      htmlFor="location-weekend-hours"
+                      htmlFor="location-weekday-delivery-time"
                     >
-                      <span>Åpningstid helg</span>
+                      <span>Leveringstid ukedag</span>
                       <input
-                        id="location-weekend-hours"
+                        id="location-weekday-delivery-time"
                         type="text"
-                        value={newLocation.weekendHours}
+                        value={newLocation.weekdayDeliveryTime}
                         onChange={(event) =>
                           setNewLocation((previous) => ({
                             ...previous,
-                            weekendHours: event.target.value,
+                            weekdayDeliveryTime: event.target.value,
                           }))
                         }
-                        placeholder="Lør-Søn: 12:00-20:00"
+                        placeholder="Man-Fre: kl. 14:00-15:00"
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="location-weekend-order-deadline"
+                    >
+                      <span>Bestillingsfrist helg</span>
+                      <input
+                        id="location-weekend-order-deadline"
+                        type="text"
+                        value={newLocation.weekendOrderDeadline}
+                        onChange={(event) =>
+                          setNewLocation((previous) => ({
+                            ...previous,
+                            weekendOrderDeadline: event.target.value,
+                          }))
+                        }
+                        placeholder="Lør-Søn: kl. 10:00"
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="location-weekend-delivery-time"
+                    >
+                      <span>Leveringstid helg</span>
+                      <input
+                        id="location-weekend-delivery-time"
+                        type="text"
+                        value={newLocation.weekendDeliveryTime}
+                        onChange={(event) =>
+                          setNewLocation((previous) => ({
+                            ...previous,
+                            weekendDeliveryTime: event.target.value,
+                          }))
+                        }
+                        placeholder="Lør-Søn: kl. 14:00-15:00"
                       />
                     </label>
 
@@ -600,39 +697,77 @@ function Locations() {
 
                     <label
                       className="field-block"
-                      htmlFor="edit-location-weekday-hours"
+                      htmlFor="edit-location-weekday-order-deadline"
                     >
-                      <span>Åpningstid ukedag</span>
+                      <span>Bestillingsfrist ukedag</span>
                       <input
-                        id="edit-location-weekday-hours"
+                        id="edit-location-weekday-order-deadline"
                         type="text"
-                        value={editLocation.weekdayHours}
+                        value={editLocation.weekdayOrderDeadline}
                         onChange={(event) =>
                           setEditLocation((previous) => ({
                             ...previous,
-                            weekdayHours: event.target.value,
+                            weekdayOrderDeadline: event.target.value,
                           }))
                         }
-                        placeholder="Man-Fre: 11:00-21:00"
+                        placeholder="Man-Fre: kl. 10:00"
                       />
                     </label>
 
                     <label
                       className="field-block"
-                      htmlFor="edit-location-weekend-hours"
+                      htmlFor="edit-location-weekday-delivery-time"
                     >
-                      <span>Åpningstid helg</span>
+                      <span>Leveringstid ukedag</span>
                       <input
-                        id="edit-location-weekend-hours"
+                        id="edit-location-weekday-delivery-time"
                         type="text"
-                        value={editLocation.weekendHours}
+                        value={editLocation.weekdayDeliveryTime}
                         onChange={(event) =>
                           setEditLocation((previous) => ({
                             ...previous,
-                            weekendHours: event.target.value,
+                            weekdayDeliveryTime: event.target.value,
                           }))
                         }
-                        placeholder="Lør-Søn: 12:00-20:00"
+                        placeholder="Man-Fre: kl. 14:00-15:00"
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="edit-location-weekend-order-deadline"
+                    >
+                      <span>Bestillingsfrist helg</span>
+                      <input
+                        id="edit-location-weekend-order-deadline"
+                        type="text"
+                        value={editLocation.weekendOrderDeadline}
+                        onChange={(event) =>
+                          setEditLocation((previous) => ({
+                            ...previous,
+                            weekendOrderDeadline: event.target.value,
+                          }))
+                        }
+                        placeholder="Lør-Søn: kl. 10:00"
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="edit-location-weekend-delivery-time"
+                    >
+                      <span>Leveringstid helg</span>
+                      <input
+                        id="edit-location-weekend-delivery-time"
+                        type="text"
+                        value={editLocation.weekendDeliveryTime}
+                        onChange={(event) =>
+                          setEditLocation((previous) => ({
+                            ...previous,
+                            weekendDeliveryTime: event.target.value,
+                          }))
+                        }
+                        placeholder="Lør-Søn: kl. 14:00-15:00"
                       />
                     </label>
 

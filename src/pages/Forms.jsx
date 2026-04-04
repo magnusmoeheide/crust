@@ -352,7 +352,7 @@ function Forms() {
                     className="ghost"
                     href={`/skjema/${form.slug}/analyse`}
                   >
-                    Analyse
+                    Varebeholdning
                   </a>
                   <a
                     className="ghost"

@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app'
+import { getApp, getApps, initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
@@ -15,7 +15,7 @@ const firebaseConfig = {
   measurementId: 'G-GXQGM47CX2',
 }
 
-const app = initializeApp(firebaseConfig)
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
 
 // Analytics is optional and only works in supported browser contexts.
 if (typeof window !== 'undefined') {
