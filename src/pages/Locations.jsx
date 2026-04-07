@@ -22,6 +22,8 @@ import foodtruck1200 from "../assets/optimized/foodtruck-1200.png";
 const emptyLocationForm = {
   name: "",
   city: "",
+  weekdayHours: "",
+  weekendHours: "",
   weekdayOrderDeadline: "",
   weekdayDeliveryTime: "",
   weekendOrderDeadline: "",
@@ -82,37 +84,8 @@ function getLocationErrorMessage(error, fallbackMessage) {
   return code ? `${fallbackMessage} (${code})` : fallbackMessage;
 }
 
-function getLocationScheduleEntries(location) {
+function getLocationOpeningHoursEntries(location) {
   const entries = [];
-
-  if (location?.weekdayOrderDeadline) {
-    entries.push({
-      label: "Bestillingsfrist ukedag",
-      value: location.weekdayOrderDeadline,
-    });
-  }
-  if (location?.weekdayDeliveryTime) {
-    entries.push({
-      label: "Leveringstid ukedag",
-      value: location.weekdayDeliveryTime,
-    });
-  }
-  if (location?.weekendOrderDeadline) {
-    entries.push({
-      label: "Bestillingsfrist helg",
-      value: location.weekendOrderDeadline,
-    });
-  }
-  if (location?.weekendDeliveryTime) {
-    entries.push({
-      label: "Leveringstid helg",
-      value: location.weekendDeliveryTime,
-    });
-  }
-
-  if (entries.length > 0) {
-    return entries;
-  }
 
   if (location?.weekdayHours) {
     entries.push({
@@ -237,6 +210,8 @@ function Locations() {
         name: newLocation.name.trim(),
         city: newLocation.city.trim(),
         address: newLocation.city.trim(),
+        weekdayHours: newLocation.weekdayHours.trim(),
+        weekendHours: newLocation.weekendHours.trim(),
         weekdayOrderDeadline: newLocation.weekdayOrderDeadline.trim(),
         weekdayDeliveryTime: newLocation.weekdayDeliveryTime.trim(),
         weekendOrderDeadline: newLocation.weekendOrderDeadline.trim(),
@@ -269,6 +244,8 @@ function Locations() {
     setEditLocation({
       name: location.name || "",
       city: location.city || location.address || "",
+      weekdayHours: location.weekdayHours || "",
+      weekendHours: location.weekendHours || "",
       weekdayOrderDeadline: location.weekdayOrderDeadline || "",
       weekdayDeliveryTime: location.weekdayDeliveryTime || "",
       weekendOrderDeadline: location.weekendOrderDeadline || "",
@@ -306,6 +283,8 @@ function Locations() {
         name: editLocation.name.trim(),
         city: editLocation.city.trim(),
         address: editLocation.city.trim(),
+        weekdayHours: editLocation.weekdayHours.trim(),
+        weekendHours: editLocation.weekendHours.trim(),
         weekdayOrderDeadline: editLocation.weekdayOrderDeadline.trim(),
         weekdayDeliveryTime: editLocation.weekdayDeliveryTime.trim(),
         weekendOrderDeadline: editLocation.weekendOrderDeadline.trim(),
@@ -399,9 +378,9 @@ function Locations() {
               <FontAwesomeIcon icon={faLocationDot} />{" "}
               {location.city || location.address || "Ukjent by"}
             </p>
-            {getLocationScheduleEntries(location).map((entry) => (
+            {getLocationOpeningHoursEntries(location).map((entry) => (
               <p key={`${location.id}-${entry.label}`} className="location-schedule-entry">
-                <strong>{entry.label}:</strong> {entry.value}
+                {entry.value}
               </p>
             ))}
             {location.mapUrl ? (
@@ -499,6 +478,44 @@ function Locations() {
                           }))
                         }
                         required
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="location-weekday-hours"
+                    >
+                      <span>Åpningstid ukedag</span>
+                      <input
+                        id="location-weekday-hours"
+                        type="text"
+                        value={newLocation.weekdayHours}
+                        onChange={(event) =>
+                          setNewLocation((previous) => ({
+                            ...previous,
+                            weekdayHours: event.target.value,
+                          }))
+                        }
+                        placeholder="Man-Fre: 11:00-20:00"
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="location-weekend-hours"
+                    >
+                      <span>Åpningstid helg</span>
+                      <input
+                        id="location-weekend-hours"
+                        type="text"
+                        value={newLocation.weekendHours}
+                        onChange={(event) =>
+                          setNewLocation((previous) => ({
+                            ...previous,
+                            weekendHours: event.target.value,
+                          }))
+                        }
+                        placeholder="Lør-Søn: 12:00-21:00"
                       />
                     </label>
 
@@ -692,6 +709,44 @@ function Locations() {
                           }))
                         }
                         required
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="edit-location-weekday-hours"
+                    >
+                      <span>Åpningstid ukedag</span>
+                      <input
+                        id="edit-location-weekday-hours"
+                        type="text"
+                        value={editLocation.weekdayHours}
+                        onChange={(event) =>
+                          setEditLocation((previous) => ({
+                            ...previous,
+                            weekdayHours: event.target.value,
+                          }))
+                        }
+                        placeholder="Man-Fre: 11:00-20:00"
+                      />
+                    </label>
+
+                    <label
+                      className="field-block"
+                      htmlFor="edit-location-weekend-hours"
+                    >
+                      <span>Åpningstid helg</span>
+                      <input
+                        id="edit-location-weekend-hours"
+                        type="text"
+                        value={editLocation.weekendHours}
+                        onChange={(event) =>
+                          setEditLocation((previous) => ({
+                            ...previous,
+                            weekendHours: event.target.value,
+                          }))
+                        }
+                        placeholder="Lør-Søn: 12:00-21:00"
                       />
                     </label>
 
