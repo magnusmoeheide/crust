@@ -30,6 +30,10 @@ const IMAGE_CAPTURED_AT_SUFFIX = '__capturedAt'
 const SELF_DECLARATION_ACCEPTED_KEY = 'Egenerklæring bekreftet'
 const SELECT_OPTION_HISTORY_CATEGORIES = ['normal', 'orange', 'red']
 const RECEIPT_EDIT_WINDOW_MS = 30 * 60 * 1000
+const MAX_UPLOADED_IMAGE_BYTES = 500 * 1024
+const MAX_UPLOADED_IMAGE_DIMENSION = 1600
+const IMAGE_COMPRESSION_QUALITIES = [0.82, 0.74, 0.66, 0.58, 0.5]
+const IMAGE_COMPRESSION_SCALES = [1, 0.9, 0.8, 0.7]
 const PUBLIC_FORM_COPY = {
   no: {
     languageLabel: 'Språk',
@@ -301,6 +305,146 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(reader.error || new Error('Could not read file'))
     reader.readAsDataURL(file)
   })
+}
+
+function replaceFileExtension(fileName, nextExtension) {
+  const normalizedFileName = String(fileName || 'image').trim() || 'image'
+  const baseName = normalizedFileName.replace(/\.[^.]+$/, '')
+  return `${baseName}${nextExtension}`
+}
+
+function getImageOutputExtension(type) {
+  switch (String(type || '').trim().toLowerCase()) {
+    case 'image/png':
+      return '.png'
+    case 'image/webp':
+      return '.webp'
+    default:
+      return '.jpg'
+  }
+}
+
+function fitImageWithinBounds(width, height, maxDimension) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { width: 0, height: 0 }
+  }
+
+  if (Math.max(width, height) <= maxDimension) {
+    return { width: Math.round(width), height: Math.round(height) }
+  }
+
+  const scale = maxDimension / Math.max(width, height)
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+function loadImageFromObjectUrl(objectUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Could not load image'))
+    image.src = objectUrl
+  })
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob)
+        return
+      }
+      reject(new Error('Could not encode image'))
+    }, type, quality)
+  })
+}
+
+async function compressUploadedImage(file) {
+  if (!(file instanceof File)) {
+    return file
+  }
+
+  const inputType = String(file.type || '').trim().toLowerCase()
+  if (!inputType.startsWith('image/') || inputType === 'image/gif' || inputType === 'image/svg+xml') {
+    return file
+  }
+
+  const outputType = inputType === 'image/png' ? 'image/png' : 'image/jpeg'
+  const objectUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await loadImageFromObjectUrl(objectUrl)
+    const naturalWidth = image.naturalWidth || image.width || 0
+    const naturalHeight = image.naturalHeight || image.height || 0
+    const boundedSize = fitImageWithinBounds(
+      naturalWidth,
+      naturalHeight,
+      MAX_UPLOADED_IMAGE_DIMENSION,
+    )
+
+    if (!boundedSize.width || !boundedSize.height) {
+      return file
+    }
+
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return file
+    }
+
+    let bestBlob = null
+
+    // Try a few quality and scale combinations and keep the smallest result.
+    for (const scale of IMAGE_COMPRESSION_SCALES) {
+      const width = Math.max(1, Math.round(boundedSize.width * scale))
+      const height = Math.max(1, Math.round(boundedSize.height * scale))
+
+      canvas.width = width
+      canvas.height = height
+      context.clearRect(0, 0, width, height)
+
+      if (outputType === 'image/jpeg') {
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, width, height)
+      }
+
+      context.drawImage(image, 0, 0, width, height)
+
+      for (const quality of IMAGE_COMPRESSION_QUALITIES) {
+        const blob = await canvasToBlob(
+          canvas,
+          outputType,
+          outputType === 'image/png' ? undefined : quality,
+        )
+
+        if (!bestBlob || blob.size < bestBlob.size) {
+          bestBlob = blob
+        }
+
+        if (blob.size <= MAX_UPLOADED_IMAGE_BYTES) {
+          return new File([blob], replaceFileExtension(file.name, getImageOutputExtension(outputType)), {
+            type: outputType,
+            lastModified: file.lastModified,
+          })
+        }
+      }
+    }
+
+    if (bestBlob && bestBlob.size < file.size) {
+      return new File([bestBlob], replaceFileExtension(file.name, getImageOutputExtension(outputType)), {
+        type: outputType,
+        lastModified: file.lastModified,
+      })
+    }
+
+    return file
+  } catch {
+    return file
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
 }
 
 function getImageCapturedAtAnswerKey(answerKey) {
@@ -792,6 +936,140 @@ function getVisibleFormQuestions(questions = [], selectedLocationName = '') {
 
 function isStorageImagePath(value) {
   return typeof value === 'string' && value.startsWith('forms/images/')
+}
+
+function isDirectImageUrl(value) {
+  const normalizedValue = String(value || '').trim()
+  return (
+    normalizedValue.startsWith('data:image/') ||
+    normalizedValue.startsWith('blob:') ||
+    /^https?:\/\//i.test(normalizedValue)
+  )
+}
+
+function getPathFileName(value) {
+  const normalizedValue = String(value || '').trim()
+  if (!normalizedValue) {
+    return ''
+  }
+
+  const pathWithoutQuery = normalizedValue.split('#')[0].split('?')[0]
+  const segments = pathWithoutQuery.split('/').filter(Boolean)
+  const fileName = segments[segments.length - 1] || ''
+
+  try {
+    return decodeURIComponent(fileName)
+  } catch {
+    return fileName
+  }
+}
+
+function looksLikeImageFileName(value) {
+  return /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/i.test(getPathFileName(value))
+}
+
+function getSubmissionImageOwnerId(submission) {
+  return String(submission?.submissionId || submission?.id || '').trim()
+}
+
+function findSubmissionImagePath(answerKey, value, submission, questions = []) {
+  if (isStorageImagePath(value)) {
+    return String(value)
+  }
+
+  const fileName = getPathFileName(value)
+  if (!fileName) {
+    return ''
+  }
+
+  const imagePaths = Array.isArray(submission?.imagePaths) ? submission.imagePaths : []
+  if (imagePaths.length === 0) {
+    return ''
+  }
+
+  const question = getQuestionForAnswerKey(answerKey, questions)
+  const isDetailAnswer = String(answerKey || '').trim().endsWith(SELECT_DETAIL_SUFFIX)
+  const submissionOwnerId = getSubmissionImageOwnerId(submission)
+  const preferredPrefix =
+    submissionOwnerId && question?.id
+      ? `${submissionOwnerId}-${question.id}-${isDetailAnswer ? 'detail-' : ''}`
+      : ''
+
+  const matchingPaths = imagePaths.filter((path) => getPathFileName(path) === fileName)
+  if (matchingPaths.length === 1) {
+    return matchingPaths[0]
+  }
+
+  if (preferredPrefix) {
+    const preferredMatch = imagePaths.find((path) => {
+      const pathFileName = getPathFileName(path)
+      return (
+        pathFileName.startsWith(preferredPrefix) &&
+        (pathFileName === fileName || pathFileName.endsWith(`-${fileName}`))
+      )
+    })
+    if (preferredMatch) {
+      return preferredMatch
+    }
+  }
+
+  const suffixMatches = imagePaths.filter((path) => getPathFileName(path).endsWith(`-${fileName}`))
+  if (suffixMatches.length === 1) {
+    return suffixMatches[0]
+  }
+
+  return ''
+}
+
+function getAnswerImageDetails(answerKey, value, submission, imageUrls, questions = []) {
+  const normalizedValue = String(value || '').trim()
+  if (!normalizedValue) {
+    return { isImageAnswer: false, imageUrl: '', fileLabel: '' }
+  }
+
+  if (isDirectImageUrl(normalizedValue)) {
+    return {
+      isImageAnswer: true,
+      imageUrl: normalizedValue,
+      fileLabel: getPathFileName(normalizedValue) || 'Open image',
+    }
+  }
+
+  const imagePath = findSubmissionImagePath(answerKey, normalizedValue, submission, questions)
+  if (imagePath) {
+    const fileName = getPathFileName(imagePath)
+    const question = getQuestionForAnswerKey(answerKey, questions)
+    const submissionOwnerId = getSubmissionImageOwnerId(submission)
+    const detailPrefix =
+      submissionOwnerId && question?.id ? `${submissionOwnerId}-${question.id}-detail-` : ''
+    const standardPrefix =
+      submissionOwnerId && question?.id ? `${submissionOwnerId}-${question.id}-` : ''
+    let fileLabel = fileName
+
+    if (detailPrefix && fileName.startsWith(detailPrefix)) {
+      fileLabel = fileName.slice(detailPrefix.length)
+    } else if (standardPrefix && fileName.startsWith(standardPrefix)) {
+      fileLabel = fileName.slice(standardPrefix.length)
+    } else if (!isStorageImagePath(normalizedValue)) {
+      fileLabel = getPathFileName(normalizedValue) || fileName
+    }
+
+    return {
+      isImageAnswer: true,
+      imageUrl: String(imageUrls?.[imagePath] || ''),
+      fileLabel: fileLabel || getPathFileName(normalizedValue) || 'Open image',
+    }
+  }
+
+  if (looksLikeImageFileName(normalizedValue)) {
+    return {
+      isImageAnswer: true,
+      imageUrl: '',
+      fileLabel: getPathFileName(normalizedValue),
+    }
+  }
+
+  return { isImageAnswer: false, imageUrl: '', fileLabel: '' }
 }
 
 function getHelpTextStyle(question) {
@@ -2267,7 +2545,10 @@ function FormPage() {
 
     let cancelled = false
     const imagePaths = Array.from(
-      new Set(Object.values(receiptSubmission.answers || {}).filter((value) => isStorageImagePath(value))),
+      new Set([
+        ...(Array.isArray(receiptSubmission.imagePaths) ? receiptSubmission.imagePaths : []),
+        ...Object.values(receiptSubmission.answers || {}).filter((value) => isStorageImagePath(value)),
+      ]),
     )
 
     if (imagePaths.length === 0) {
@@ -2455,21 +2736,21 @@ function FormPage() {
   }
 
   async function onCameraFileChange(questionId, file) {
-    setCameraFiles((previous) => ({
-      ...previous,
-      [questionId]: file,
-    }))
-    setCameraCapturedAt((previous) => {
-      if (typeof previous[questionId] === 'undefined') {
-        return previous
-      }
-      const next = { ...previous }
-      delete next[questionId]
-      return next
-    })
     onAnswerChange(questionId, file ? file.name : '')
 
     if (!file) {
+      setCameraFiles((previous) => ({
+        ...previous,
+        [questionId]: null,
+      }))
+      setCameraCapturedAt((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
       setCameraPreviews((previous) => {
         if (typeof previous[questionId] === 'undefined') {
           return previous
@@ -2481,10 +2762,26 @@ function FormPage() {
       return
     }
 
+    const capturedAtValue =
+      isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+    const nextFile = await compressUploadedImage(file)
+
+    setCameraFiles((previous) => ({
+      ...previous,
+      [questionId]: nextFile,
+    }))
+    setCameraCapturedAt((previous) => {
+      if (typeof previous[questionId] === 'undefined') {
+        return previous
+      }
+      const next = { ...previous }
+      delete next[questionId]
+      return next
+    })
+
     try {
-      const previewUrl = await readFileAsDataUrl(file)
-      const capturedAtValue =
-        isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+      const previewUrl = await readFileAsDataUrl(nextFile)
+      onAnswerChange(questionId, nextFile.name)
       setCameraPreviews((previous) => ({
         ...previous,
         [questionId]: previewUrl,
@@ -2510,20 +2807,19 @@ function FormPage() {
   }
 
   async function onSelectDetailCameraFileChange(questionId, file) {
-    setSelectDetailFiles((previous) => ({
-      ...previous,
-      [questionId]: file,
-    }))
-    setSelectDetailCapturedAt((previous) => {
-      if (typeof previous[questionId] === 'undefined') {
-        return previous
-      }
-      const next = { ...previous }
-      delete next[questionId]
-      return next
-    })
-
     if (!file) {
+      setSelectDetailFiles((previous) => ({
+        ...previous,
+        [questionId]: null,
+      }))
+      setSelectDetailCapturedAt((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
       setSelectDetailPreviews((previous) => {
         if (typeof previous[questionId] === 'undefined') {
           return previous
@@ -2535,10 +2831,25 @@ function FormPage() {
       return
     }
 
+    const capturedAtValue =
+      isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+    const nextFile = await compressUploadedImage(file)
+
+    setSelectDetailFiles((previous) => ({
+      ...previous,
+      [questionId]: nextFile,
+    }))
+    setSelectDetailCapturedAt((previous) => {
+      if (typeof previous[questionId] === 'undefined') {
+        return previous
+      }
+      const next = { ...previous }
+      delete next[questionId]
+      return next
+    })
+
     try {
-      const previewUrl = await readFileAsDataUrl(file)
-      const capturedAtValue =
-        isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+      const previewUrl = await readFileAsDataUrl(nextFile)
       setSelectDetailPreviews((previous) => ({
         ...previous,
         [questionId]: previewUrl,
@@ -5225,9 +5536,16 @@ function FormPage() {
 
                   <div className="receipt-answer-list">
                     {receiptAnswerEntries.map(([key, value]) => {
-                      const imageUrl = isStorageImagePath(value)
-                        ? receiptSubmission.imageUrls?.[value] || receiptImageUrls[value] || ''
-                        : ''
+                      const answerImage = getAnswerImageDetails(
+                        key,
+                        value,
+                        receiptSubmission,
+                        {
+                          ...(receiptSubmission.imageUrls || {}),
+                          ...receiptImageUrls,
+                        },
+                        formData.questions,
+                      )
 
                       return (
                         <article key={key} className="receipt-answer-row">
@@ -5236,22 +5554,37 @@ function FormPage() {
                               getAnswerDisplayLabel(key, receiptSubmission.answers, formData.questions),
                             )}
                           </p>
-                          {imageUrl ? (
-                            <img
-                              className="receipt-answer-image"
-                              src={imageUrl}
-                              alt={translateText(
-                                getAnswerDisplayLabel(
-                                  key,
-                                  receiptSubmission.answers,
-                                  formData.questions,
-                                ),
+                          {answerImage.isImageAnswer ? (
+                            <>
+                              {answerImage.imageUrl ? (
+                                <img
+                                  className="receipt-answer-image"
+                                  src={answerImage.imageUrl}
+                                  alt={translateText(
+                                    getAnswerDisplayLabel(
+                                      key,
+                                      receiptSubmission.answers,
+                                      formData.questions,
+                                    ),
+                                  )}
+                                  loading="lazy"
+                                />
+                              ) : null}
+                              {answerImage.imageUrl ? (
+                                <p className="receipt-answer-value receipt-answer-file-link">
+                                  <a href={answerImage.imageUrl} target="_blank" rel="noreferrer">
+                                    {answerImage.fileLabel || 'Open image'}
+                                  </a>
+                                </p>
+                              ) : (
+                                <p className="receipt-answer-value">
+                                  {answerImage.fileLabel || publicCopy.loadingImage}
+                                </p>
                               )}
-                              loading="lazy"
-                            />
+                            </>
                           ) : (
                             <p className="receipt-answer-value">
-                              {isStorageImagePath(value) ? publicCopy.loadingImage : String(value || '-')}
+                              {String(value || '-')}
                             </p>
                           )}
                         </article>
@@ -6980,10 +7313,14 @@ function FormPage() {
 
                     <div className="review-comparison-list">
                       {selectedSubmissionAnswerEntries.map(([answerKey, value]) => {
-                        const imageUrl = isStorageImagePath(value)
-                          ? selectedSubmissionImageUrls[value] || ''
-                          : ''
                         const question = getQuestionForAnswerKey(answerKey, formData.questions)
+                        const reviewImage = getAnswerImageDetails(
+                          answerKey,
+                          value,
+                          selectedSubmission,
+                          selectedSubmissionImageUrls,
+                          formData.questions,
+                        )
                         const reviewStatus = reviewDraftStatuses[answerKey] || ''
                         const isApproved = reviewStatus === 'approved'
                         const isFlagged = reviewStatus === 'flagged'
@@ -7001,29 +7338,48 @@ function FormPage() {
                                 )}
                               </p>
                               <p className="review-panel-title">User answer</p>
-                              {imageUrl ? (
-                                <img
-                                  className="review-answer-image"
-                                  src={imageUrl}
-                                  alt={translateText(
-                                    getAnswerDisplayLabel(
-                                      answerKey,
-                                      selectedSubmission.answers,
-                                      formData.questions,
-                                    ),
+                              {reviewImage.isImageAnswer ? (
+                                <>
+                                  {reviewImage.imageUrl ? (
+                                    <img
+                                      className="review-answer-image"
+                                      src={reviewImage.imageUrl}
+                                      alt={translateText(
+                                        getAnswerDisplayLabel(
+                                          answerKey,
+                                          selectedSubmission.answers,
+                                          formData.questions,
+                                        ),
+                                      )}
+                                      loading="lazy"
+                                    />
+                                  ) : null}
+                                  {reviewImage.imageUrl ? (
+                                    <p className="review-answer-value review-answer-file-link">
+                                      <a
+                                        href={reviewImage.imageUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        {reviewImage.fileLabel || 'Open image'}
+                                      </a>
+                                    </p>
+                                  ) : (
+                                    <p className="review-answer-value">
+                                      {selectedSubmissionImagesLoading
+                                        ? 'Loading image...'
+                                        : reviewImage.fileLabel || 'Could not load image.'}
+                                    </p>
                                   )}
-                                  loading="lazy"
-                                />
+                                </>
                               ) : (
                                 <p className="review-answer-value">
-                                  {isStorageImagePath(value)
-                                    ? 'Loading image...'
-                                    : getReviewDisplayValue(
-                                        answerKey,
-                                        value,
-                                        question,
-                                        translateText,
-                                      )}
+                                  {getReviewDisplayValue(
+                                    answerKey,
+                                    value,
+                                    question,
+                                    translateText,
+                                  )}
                                 </p>
                               )}
                             </div>

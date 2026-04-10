@@ -2005,6 +2005,20 @@
   background: #fff;
 }
 
+.review-answer-file-link a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+  word-break: break-word;
+}
+
+.receipt-answer-file-link a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+  word-break: break-word;
+}
+
 .flagged-panel-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.95fr) minmax(0, 1.25fr);
