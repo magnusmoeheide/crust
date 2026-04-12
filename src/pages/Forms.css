@@ -2028,6 +2028,8 @@
 .flagged-panel {
   display: grid;
   gap: 10px;
+  align-content: start;
+  align-items: start;
   border: 1px solid rgba(24, 44, 60, 0.14);
   border-radius: 12px;
   padding: 12px;
@@ -2113,6 +2115,147 @@
 .flagged-answer-comment {
   margin: 0;
   color: #5f4c3f;
+}
+
+.flagged-warning-box {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 244, 230, 0.78);
+  border: 1px solid rgba(180, 118, 30, 0.2);
+}
+
+.flagged-warning-box-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
+.flagged-warning-box-header p,
+.flagged-warning-summary-list p,
+.flagged-warning-existing-item {
+  margin: 0;
+}
+
+.flagged-warning-summary-list,
+.flagged-warning-list {
+  display: grid;
+  gap: 6px;
+}
+
+.flagged-warning-draft-row {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.flagged-warning-draft-row .field-block {
+  flex: 1 1 220px;
+  margin: 0;
+}
+
+.flagged-action-buttons {
+  align-items: start;
+}
+
+.flagged-category-popup-wrap {
+  position: relative;
+}
+
+.flagged-category-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 10;
+  width: min(320px, calc(100vw - 56px));
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid rgba(180, 118, 30, 0.28);
+  box-shadow: 0 18px 30px rgba(24, 44, 60, 0.14);
+}
+
+.flagged-category-popup .field-block {
+  margin: 0;
+}
+
+.flagged-category-popup-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.flagged-category-popup-actions .cta,
+.flagged-category-popup-actions .ghost {
+  min-width: 96px;
+}
+
+.remarks-page,
+.remarks-list {
+  display: grid;
+  gap: 12px;
+}
+
+.remarks-summary-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.remarks-card {
+  gap: 12px;
+}
+
+.remarks-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.remarks-card-header h4,
+.remarks-card-header p,
+.remarks-meta-grid p {
+  margin: 0;
+}
+
+.remarks-meta-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.remarks-count-badge,
+.remarks-category-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.remarks-count-badge {
+  padding: 6px 10px;
+  background: rgba(255, 232, 204, 0.95);
+  color: #9a5a00;
+  white-space: nowrap;
+}
+
+.remarks-category-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.remarks-category-chip {
+  padding: 5px 10px;
+  background: rgba(24, 44, 60, 0.08);
+  color: #182c3c;
 }
 
 .flagged-empty-note {
@@ -2283,6 +2426,14 @@
   .review-comparison-row,
   .review-page-header {
     grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .flagged-category-popup,
+  .flagged-category-popup-actions,
+  .flagged-warning-draft-row,
+  .flagged-warning-box-header,
+  .remarks-card-header {
     display: grid;
   }
 

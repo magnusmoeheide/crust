@@ -9,6 +9,7 @@ export const defaultStengeskjema = {
   includeSubmissionDateTime: false,
   enableSelfDeclaration: false,
   selfDeclarationText: '',
+  warningCategories: [],
   updatedAt: null,
   questions: [
     {

@@ -343,6 +343,10 @@ function App() {
           element={withPageLoader(<RoutedFormPage />)}
         />
         <Route
+          path="/skjema/:formSlug/remarks"
+          element={withPageLoader(<RoutedFormPage />)}
+        />
+        <Route
           path="/skjema/:formSlug/analyse"
           element={withPageLoader(<RoutedFormPage />)}
         />

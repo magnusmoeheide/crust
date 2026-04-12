@@ -22,6 +22,7 @@ function Forms() {
   const [forms, setForms] = useState([defaultStengeskjema]);
   const [pendingReviewCounts, setPendingReviewCounts] = useState({});
   const [flaggedCounts, setFlaggedCounts] = useState({});
+  const [remarkCounts, setRemarkCounts] = useState({});
   const [loadingForms, setLoadingForms] = useState(true);
   const [formsError, setFormsError] = useState("");
   const [newFormSlug, setNewFormSlug] = useState("");
@@ -93,6 +94,7 @@ function Forms() {
     if (!isAdmin) {
       setPendingReviewCounts({});
       setFlaggedCounts({});
+      setRemarkCounts({});
       return;
     }
 
@@ -103,6 +105,7 @@ function Forms() {
         const snapshot = await getDocs(collection(db, "formSubmissions"));
         const nextCounts = {};
         const nextFlaggedCounts = {};
+        const nextRemarkCounts = {};
 
         snapshot.forEach((item) => {
           const data = item.data();
@@ -122,6 +125,18 @@ function Forms() {
             nextFlaggedCounts[formSlug] = (nextFlaggedCounts[formSlug] || 0) + 1;
           }
 
+          const warningCount = Array.isArray(data?.warnings)
+            ? data.warnings.filter(
+                (warning) => warning && String(warning.category || "").trim().length > 0,
+              ).length
+            : data?.warningRegistered || String(data?.warningCategory || "").trim()
+              ? 1
+              : 0;
+
+          if (warningCount > 0) {
+            nextRemarkCounts[formSlug] = (nextRemarkCounts[formSlug] || 0) + warningCount;
+          }
+
           if (String(data?.status || "").trim().toLowerCase() === "reviewed") {
             return;
           }
@@ -132,11 +147,13 @@ function Forms() {
         if (!cancelled) {
           setPendingReviewCounts(nextCounts);
           setFlaggedCounts(nextFlaggedCounts);
+          setRemarkCounts(nextRemarkCounts);
         }
       } catch {
         if (!cancelled) {
           setPendingReviewCounts({});
           setFlaggedCounts({});
+          setRemarkCounts({});
         }
       }
     }
@@ -211,6 +228,7 @@ function Forms() {
         slug: normalizedSlug,
         title,
         description: "",
+        warningCategories: [],
         questions: [
           {
             id: "navn",
@@ -347,6 +365,12 @@ function Forms() {
                     href={`/skjema/${form.slug}/flagget`}
                   >
                     Flagget ({flaggedCounts[form.slug] || 0})
+                  </a>
+                  <a
+                    className="ghost"
+                    href={`/skjema/${form.slug}/remarks`}
+                  >
+                    Remarks ({remarkCounts[form.slug] || 0})
                   </a>
                   <a
                     className="ghost"

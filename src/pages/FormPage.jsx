@@ -156,6 +156,71 @@ function isValidNorwegianPhoneNumber(value) {
   return /^[0-9]{8}$/.test(normalizeNorwegianPhoneNumber(value))
 }
 
+function normalizeWarningCategories(rawCategories) {
+  const values = Array.isArray(rawCategories)
+    ? rawCategories
+    : typeof rawCategories === 'string'
+      ? rawCategories.split(',')
+      : []
+
+  const seen = new Set()
+
+  return values
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const normalized = value.toLowerCase()
+      if (seen.has(normalized)) {
+        return false
+      }
+      seen.add(normalized)
+      return true
+    })
+    .sort((a, b) => a.localeCompare(b, 'nb'))
+}
+
+function createWarningDraft(category = '') {
+  return {
+    id: `warning-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    category: String(category || '').trim(),
+  }
+}
+
+function normalizeSubmissionWarningEntry(entry) {
+  const category = String(entry?.category || '').trim()
+  if (!category) {
+    return null
+  }
+
+  return {
+    category,
+    recordedAt: entry?.recordedAt || null,
+    recordedBy: String(entry?.recordedBy || '').trim(),
+  }
+}
+
+function getSubmissionWarnings(submission) {
+  const normalizedWarnings = Array.isArray(submission?.warnings)
+    ? submission.warnings.map((entry) => normalizeSubmissionWarningEntry(entry)).filter(Boolean)
+    : []
+
+  if (normalizedWarnings.length > 0) {
+    return normalizedWarnings
+  }
+
+  if (submission?.warningRegistered || String(submission?.warningCategory || '').trim()) {
+    return [
+      {
+        category: String(submission?.warningCategory || '').trim() || 'Uten kategori',
+        recordedAt: submission?.warningRecordedAt || null,
+        recordedBy: String(submission?.warningRecordedBy || '').trim(),
+      },
+    ]
+  }
+
+  return []
+}
+
 function parseQuestionOptions(rawOptions) {
   if (Array.isArray(rawOptions)) {
     return rawOptions
@@ -852,6 +917,22 @@ function getSubmissionEmail(answers, questions = []) {
       return String(answers[key]).trim()
     }
   }
+  return ''
+}
+
+function getSubmissionPhone(answers, questions = []) {
+  const phoneQuestion = questions.find((question) => question.type === 'phone')
+  if (phoneQuestion?.id && answers?.[phoneQuestion.id] && String(answers[phoneQuestion.id]).trim()) {
+    return normalizeNorwegianPhoneNumber(answers[phoneQuestion.id])
+  }
+
+  const candidates = ['telefon', 'telefonnummer', 'phone', 'phoneNumber', 'tlf', 'mobil']
+  for (const key of candidates) {
+    if (answers?.[key] && String(answers[key]).trim()) {
+      return normalizeNorwegianPhoneNumber(answers[key])
+    }
+  }
+
   return ''
 }
 
@@ -1733,17 +1814,28 @@ function FormPage() {
   const isSubmissionsView = location.pathname.endsWith('/submissions')
   const isReviewView = location.pathname.includes('/review/')
   const isFlaggedView = location.pathname.endsWith('/flagget')
+  const isRemarksView = location.pathname.endsWith('/remarks')
   const isDeliverySettingsView = location.pathname.endsWith('/leveringsliste/innstillinger')
   const isDeliveryView = location.pathname.endsWith('/leveringsliste')
   const isHistoryView =
     location.pathname.endsWith('/analyse') || location.pathname.endsWith('/historikk')
   const isEditPage = location.pathname.endsWith('/edit')
   const isReceiptPage = location.pathname.includes('/kvittering/')
+  const isAdminShellView =
+    isSubmissionsView ||
+    isEditPage ||
+    isHistoryView ||
+    isFlaggedView ||
+    isRemarksView ||
+    isReviewView ||
+    isDeliveryView ||
+    isDeliverySettingsView
   const isStandalonePublicForm =
     !isSubmissionsView &&
     !isEditPage &&
     !isHistoryView &&
     !isFlaggedView &&
+    !isRemarksView &&
     !isReviewView &&
     !isDeliverySettingsView &&
     !isDeliveryView
@@ -1826,6 +1918,9 @@ function FormPage() {
   const [flaggedImageUrls, setFlaggedImageUrls] = useState({})
   const [flaggedReviewOpenId, setFlaggedReviewOpenId] = useState('')
   const [flaggedActionDrafts, setFlaggedActionDrafts] = useState({})
+  const [flaggedWarningDrafts, setFlaggedWarningDrafts] = useState({})
+  const [newWarningCategoryDrafts, setNewWarningCategoryDrafts] = useState({})
+  const [flaggedCategoryPopupOpenId, setFlaggedCategoryPopupOpenId] = useState('')
   const [flaggedActionState, setFlaggedActionState] = useState({})
   const [flaggedCollapsedIds, setFlaggedCollapsedIds] = useState({})
   const [analysisActionState, setAnalysisActionState] = useState({})
@@ -1930,6 +2025,7 @@ function FormPage() {
             includeSubmissionDateTime: Boolean(merged.includeSubmissionDateTime),
             enableSelfDeclaration: Boolean(merged.enableSelfDeclaration),
             selfDeclarationText: String(merged.selfDeclarationText || ''),
+            warningCategories: normalizeWarningCategories(merged.warningCategories),
             questions: normalizedQuestions,
           }
 
@@ -2277,14 +2373,8 @@ function FormPage() {
       loadingForm ||
       !draftReady ||
       isSubmissionEditMode ||
-      isEditPage ||
-      isSubmissionsView ||
-      isReceiptPage ||
-      isHistoryView ||
-      isDeliverySettingsView ||
-      isDeliveryView ||
-      isFlaggedView ||
-      isReviewView
+      isAdminShellView ||
+      isReceiptPage
     ) {
       return
     }
@@ -2356,15 +2446,9 @@ function FormPage() {
     cameraCapturedAt,
     draftReady,
     formData.questions,
-    isDeliverySettingsView,
+    isAdminShellView,
     isSubmissionEditMode,
-    isDeliveryView,
-    isEditPage,
-    isFlaggedView,
-    isHistoryView,
     isReceiptPage,
-    isReviewView,
-    isSubmissionsView,
     loadingForm,
     locationOtherAnswers,
     selectDetailCapturedAt,
@@ -4064,7 +4148,9 @@ function FormPage() {
       return
     }
 
-    setFlaggedReviewOpenId((previous) => (previous === submission.id ? '' : submission.id))
+    const nextOpenId = flaggedReviewOpenId === submission.id ? '' : submission.id
+    setFlaggedReviewOpenId(nextOpenId)
+    setFlaggedCategoryPopupOpenId('')
     setFlaggedActionDrafts((previous) => ({
       ...previous,
       [submission.id]:
@@ -4078,7 +4164,62 @@ function FormPage() {
         saving: false,
         error: '',
         message: previous[submission.id]?.message || '',
+        categorySaving: false,
+        categoryError: '',
       },
+    }))
+    setFlaggedWarningDrafts((previous) => ({
+      ...previous,
+      [submission.id]: Array.isArray(previous[submission.id]) ? previous[submission.id] : [],
+    }))
+    setNewWarningCategoryDrafts((previous) => ({
+      ...previous,
+      [submission.id]:
+        typeof previous[submission.id] === 'string'
+          ? previous[submission.id]
+          : '',
+    }))
+  }
+
+  function onAddWarningDraft(submissionId) {
+    if (!submissionId) {
+      return
+    }
+
+    setFlaggedWarningDrafts((previous) => ({
+      ...previous,
+      [submissionId]: [...(Array.isArray(previous[submissionId]) ? previous[submissionId] : []), createWarningDraft()],
+    }))
+  }
+
+  function onRemoveWarningDraft(submissionId, draftId) {
+    if (!submissionId || !draftId) {
+      return
+    }
+
+    setFlaggedWarningDrafts((previous) => ({
+      ...previous,
+      [submissionId]: (Array.isArray(previous[submissionId]) ? previous[submissionId] : []).filter(
+        (draft) => draft?.id !== draftId,
+      ),
+    }))
+  }
+
+  function onChangeWarningDraftCategory(submissionId, draftId, value) {
+    if (!submissionId || !draftId) {
+      return
+    }
+
+    setFlaggedWarningDrafts((previous) => ({
+      ...previous,
+      [submissionId]: (Array.isArray(previous[submissionId]) ? previous[submissionId] : []).map((draft) =>
+        draft?.id === draftId
+          ? {
+              ...draft,
+              category: String(value || '').trim(),
+            }
+          : draft,
+      ),
     }))
   }
 
@@ -4099,6 +4240,13 @@ function FormPage() {
     }
 
     const actionTaken = String(flaggedActionDrafts[submission.id] || '').trim()
+    const pendingWarningDrafts = Array.isArray(flaggedWarningDrafts[submission.id])
+      ? flaggedWarningDrafts[submission.id]
+      : []
+    const invalidWarningDraft = pendingWarningDrafts.find(
+      (draft) => !String(draft?.category || '').trim(),
+    )
+    const existingWarnings = getSubmissionWarnings(submission)
     if (!actionTaken) {
       setFlaggedActionState((previous) => ({
         ...previous,
@@ -4106,10 +4254,39 @@ function FormPage() {
           saving: false,
           error: 'Beskriv hva som ble gjort før flagget settes til complete.',
           message: '',
+          categorySaving: previous[submission.id]?.categorySaving || false,
+          categoryError: previous[submission.id]?.categoryError || '',
         },
       }))
       return
     }
+
+    if (invalidWarningDraft) {
+      setFlaggedActionState((previous) => ({
+        ...previous,
+        [submission.id]: {
+          saving: false,
+          error: 'Velg kategori for alle nye advarsler før saken fullføres.',
+          message: '',
+          categorySaving: previous[submission.id]?.categorySaving || false,
+          categoryError: previous[submission.id]?.categoryError || '',
+        },
+      }))
+      return
+    }
+
+    const recordedAt = new Date()
+    const recordedBy = user?.email || 'admin'
+    const appendedWarnings = [
+      ...existingWarnings,
+      ...pendingWarningDrafts.map((draft) => ({
+        category: String(draft?.category || '').trim(),
+        recordedAt,
+        recordedBy,
+      })),
+    ]
+    const latestWarning = appendedWarnings[appendedWarnings.length - 1] || null
+    const hasWarnings = appendedWarnings.length > 0
 
     setFlaggedActionState((previous) => ({
       ...previous,
@@ -4117,6 +4294,8 @@ function FormPage() {
         saving: true,
         error: '',
         message: '',
+        categorySaving: false,
+        categoryError: '',
       },
     }))
 
@@ -4126,6 +4305,11 @@ function FormPage() {
         flaggedActionTaken: actionTaken,
         flaggedCompletedAt: serverTimestamp(),
         flaggedCompletedBy: user?.email || 'admin',
+        warnings: appendedWarnings,
+        warningRegistered: hasWarnings,
+        warningCategory: latestWarning ? latestWarning.category : '',
+        warningRecordedAt: latestWarning ? latestWarning.recordedAt : null,
+        warningRecordedBy: latestWarning ? latestWarning.recordedBy : '',
       })
 
       setSubmissions((previous) =>
@@ -4137,10 +4321,20 @@ function FormPage() {
                 flaggedActionTaken: actionTaken,
                 flaggedCompletedAt: new Date(),
                 flaggedCompletedBy: user?.email || 'admin',
+                warnings: appendedWarnings,
+                warningRegistered: hasWarnings,
+                warningCategory: latestWarning ? latestWarning.category : '',
+                warningRecordedAt: latestWarning ? latestWarning.recordedAt : null,
+                warningRecordedBy: latestWarning ? latestWarning.recordedBy : '',
               }
             : item,
         ),
       )
+
+      setFlaggedWarningDrafts((previous) => ({
+        ...previous,
+        [submission.id]: [],
+      }))
 
       setFlaggedActionState((previous) => ({
         ...previous,
@@ -4148,9 +4342,12 @@ function FormPage() {
           saving: false,
           error: '',
           message: 'Flagget er satt til complete.',
+          categorySaving: false,
+          categoryError: '',
         },
       }))
       setFlaggedReviewOpenId('')
+      setFlaggedCategoryPopupOpenId('')
     } catch (error) {
       const code = error?.code ? ` (${error.code})` : ''
       setFlaggedActionState((previous) => ({
@@ -4162,6 +4359,110 @@ function FormPage() {
               ? `Kunne ikke oppdatere flagget${code}. Mangler tilgang i Firestore-regler.`
               : `Kunne ikke oppdatere flagget${code}.`,
           message: '',
+          categorySaving: false,
+          categoryError: '',
+        },
+      }))
+    }
+  }
+
+  async function onAddWarningCategory(submission) {
+    if (!submission?.id) {
+      return
+    }
+
+    const nextCategory = String(newWarningCategoryDrafts[submission.id] || '').trim()
+    if (!nextCategory) {
+      setFlaggedActionState((previous) => ({
+        ...previous,
+        [submission.id]: {
+          ...(previous[submission.id] || {}),
+          saving: false,
+          categorySaving: false,
+          categoryError: 'Skriv inn et kategorinavn før du legger det til.',
+        },
+      }))
+      return
+    }
+
+    const mergedCategories = normalizeWarningCategories([...availableWarningCategories, nextCategory])
+    const selectedCategory =
+      mergedCategories.find((category) => category.toLowerCase() === nextCategory.toLowerCase()) ||
+      nextCategory
+
+    setFlaggedActionState((previous) => ({
+      ...previous,
+      [submission.id]: {
+        ...(previous[submission.id] || {}),
+        saving: false,
+        error: '',
+        categorySaving: true,
+        categoryError: '',
+      },
+    }))
+
+    try {
+      await setDoc(
+        doc(db, 'forms', formDocId || activeFormSlug),
+        {
+          slug: activeFormSlug,
+          warningCategories: mergedCategories,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+
+      setFormData((previous) => ({
+        ...previous,
+        warningCategories: mergedCategories,
+      }))
+      setFlaggedWarningDrafts((previous) => {
+        const existingDrafts = Array.isArray(previous[submission.id]) ? previous[submission.id] : []
+        if (existingDrafts.length === 0) {
+          return {
+            ...previous,
+            [submission.id]: [createWarningDraft(selectedCategory)],
+          }
+        }
+
+        const nextDrafts = existingDrafts.map((draft, index) =>
+          index === existingDrafts.length - 1 && !String(draft?.category || '').trim()
+            ? { ...draft, category: selectedCategory }
+            : draft,
+        )
+
+        return {
+          ...previous,
+          [submission.id]: nextDrafts,
+        }
+      })
+      setNewWarningCategoryDrafts((previous) => ({
+        ...previous,
+        [submission.id]: '',
+      }))
+      setFlaggedCategoryPopupOpenId('')
+      setFlaggedActionState((previous) => ({
+        ...previous,
+        [submission.id]: {
+          ...(previous[submission.id] || {}),
+          saving: false,
+          error: '',
+          categorySaving: false,
+          categoryError: '',
+        },
+      }))
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      setFlaggedActionState((previous) => ({
+        ...previous,
+        [submission.id]: {
+          ...(previous[submission.id] || {}),
+          saving: false,
+          categorySaving: false,
+          categoryError:
+            error?.code === 'permission-denied'
+              ? `Kunne ikke lagre kategorien${code}. Mangler tilgang i Firestore-regler.`
+              : `Kunne ikke lagre kategorien${code}.`,
         },
       }))
     }
@@ -4767,6 +5068,104 @@ function FormPage() {
       ),
     [flaggedSubmissions],
   )
+  const availableWarningCategories = useMemo(
+    () =>
+      normalizeWarningCategories([
+        ...(Array.isArray(formData.warningCategories) ? formData.warningCategories : []),
+        ...submissions.flatMap((submission) =>
+          getSubmissionWarnings(submission).map((warning) => warning.category),
+        ),
+      ]),
+    [formData.warningCategories, submissions],
+  )
+  const warningSubmissions = useMemo(
+    () => submissions.filter((submission) => getSubmissionWarnings(submission).length > 0),
+    [submissions],
+  )
+  const remarksOverview = useMemo(() => {
+    const byPhone = new Map()
+    let withoutPhoneCount = 0
+    let totalWarnings = 0
+
+    warningSubmissions.forEach((submission) => {
+      const submissionWarnings = getSubmissionWarnings(submission)
+      if (submissionWarnings.length === 0) {
+        return
+      }
+      totalWarnings += submissionWarnings.length
+
+      const phone = getSubmissionPhone(submission.answers, formData.questions)
+      if (!phone) {
+        withoutPhoneCount += submissionWarnings.length
+        return
+      }
+
+      const locationName = getSubmissionLocation(submission.answers, formData.questions) || '-'
+      const nameValue = getSubmissionName(submission.answers, formData.questions)
+      const nextName = nameValue && nameValue !== phone ? nameValue : ''
+      const existing = byPhone.get(phone) || {
+        phone,
+        warningCount: 0,
+        latestSubmittedAt: submission.submittedAt || null,
+        latestSubmittedAtSeconds: submission.submittedAt?.seconds || 0,
+        latestLocation: locationName,
+        latestName: nextName,
+        categoryCounts: {},
+      }
+
+      submissionWarnings.forEach((warning) => {
+        const categoryLabel = String(warning.category || '').trim() || 'Uten kategori'
+        const warningDateValue = warning.recordedAt || submission.submittedAt || null
+        const warningDate =
+          warningDateValue instanceof Date
+            ? warningDateValue
+            : typeof warningDateValue?.toDate === 'function'
+              ? warningDateValue.toDate()
+              : null
+        const warningSeconds = warningDate ? Math.floor(warningDate.getTime() / 1000) : submission.submittedAt?.seconds || 0
+
+        existing.warningCount += 1
+        existing.categoryCounts[categoryLabel] = (existing.categoryCounts[categoryLabel] || 0) + 1
+
+        if (warningSeconds >= existing.latestSubmittedAtSeconds) {
+          existing.latestSubmittedAt = warningDateValue || submission.submittedAt || null
+          existing.latestSubmittedAtSeconds = warningSeconds
+          existing.latestLocation = locationName
+          existing.latestName = nextName
+        }
+      })
+
+      byPhone.set(phone, existing)
+    })
+
+    const rows = Array.from(byPhone.values())
+      .map((entry) => ({
+        ...entry,
+        categoryEntries: Object.entries(entry.categoryCounts)
+          .map(([label, count]) => ({ label, count }))
+          .sort((a, b) => {
+            if (b.count !== a.count) {
+              return b.count - a.count
+            }
+            return a.label.localeCompare(b.label, 'nb')
+          }),
+      }))
+      .sort((a, b) => {
+        if (b.warningCount !== a.warningCount) {
+          return b.warningCount - a.warningCount
+        }
+        if (b.latestSubmittedAtSeconds !== a.latestSubmittedAtSeconds) {
+          return b.latestSubmittedAtSeconds - a.latestSubmittedAtSeconds
+        }
+        return a.phone.localeCompare(b.phone, 'nb')
+      })
+
+    return {
+      rows,
+      withoutPhoneCount,
+      totalWarnings,
+    }
+  }, [formData.questions, warningSubmissions])
   const submissionsByLocation = visibleSubmissions
     .reduce((accumulator, submission) => {
       const location = getSubmissionLocation(submission.answers, formData.questions) || 'Ukjent lokasjon'
@@ -5065,14 +5464,7 @@ function FormPage() {
   const heroLead = isReceiptPage
     ? publicCopy.receiptLead
     : localizedFormDescription
-  const showPublicFacingHeader =
-    !isSubmissionsView &&
-    !isEditPage &&
-    !isHistoryView &&
-    !isFlaggedView &&
-    !isReviewView &&
-    !isDeliverySettingsView &&
-    !isDeliveryView
+  const showPublicFacingHeader = !isAdminShellView && !isReceiptPage
 
   useEffect(() => {
     const validLocations = new Set(historyRows.map((row) => row.location))
@@ -5092,11 +5484,17 @@ function FormPage() {
       saving: false,
       error: '',
       message: '',
+      categorySaving: false,
+      categoryError: '',
     }
     const isComplete = String(submission.flaggedStatus || '').trim().toLowerCase() === 'complete'
     const isReviewOpen = flaggedReviewOpenId === submission.id
     const isCollapsed = Boolean(flaggedCollapsedIds[submission.id])
     const isCollapsible = Boolean(options.collapsible)
+    const existingWarnings = getSubmissionWarnings(submission)
+    const pendingWarningDrafts = Array.isArray(flaggedWarningDrafts[submission.id])
+      ? flaggedWarningDrafts[submission.id]
+      : []
 
     return (
       <article key={submission.id} className="response-card flagged-submission-card">
@@ -5169,6 +5567,19 @@ function FormPage() {
                   <p>
                     <strong>Fullført:</strong> {formatTime(submission.flaggedCompletedAt)}
                   </p>
+                  <p>
+                    <strong>Registrerte advarsler:</strong> {existingWarnings.length}
+                  </p>
+                  {existingWarnings.length > 0 ? (
+                    <div className="flagged-warning-summary-list">
+                      {existingWarnings.map((warning, index) => (
+                        <p key={`${submission.id}-warning-summary-${index}`}>
+                          <strong>{index + 1}.</strong> {warning.category}
+                          {warning.recordedBy ? ` | ${warning.recordedBy}` : ''}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <p className="review-answer-value">Ingen action registrert ennå.</p>
@@ -5192,7 +5603,135 @@ function FormPage() {
                       }
                     />
                   </label>
-                  <div className="submission-table-actions">
+                  <div className="flagged-warning-box">
+                    <div className="flagged-warning-box-header">
+                      <div>
+                        <p className="review-answer-label">Advarsler</p>
+                        <p className="review-answer-value">
+                          {existingWarnings.length > 0
+                            ? `${existingWarnings.length} registrert tidligere`
+                            : 'Ingen registrerte advarsler ennå.'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => onAddWarningDraft(submission.id)}
+                      >
+                        Legg til advarsel
+                      </button>
+                    </div>
+                    {existingWarnings.length > 0 ? (
+                      <div className="flagged-warning-list">
+                        {existingWarnings.map((warning, index) => (
+                          <p key={`${submission.id}-warning-existing-${index}`} className="flagged-warning-existing-item">
+                            <strong>{index + 1}.</strong> {warning.category}
+                            {warning.recordedBy ? ` | ${warning.recordedBy}` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {pendingWarningDrafts.length > 0 ? (
+                      <div className="flagged-warning-list">
+                        {pendingWarningDrafts.map((draft, index) => (
+                          <div key={draft.id} className="flagged-warning-draft-row">
+                            <label
+                              className="field-block"
+                              htmlFor={`flagged-warning-category-${submission.id}-${draft.id}`}
+                            >
+                              <span>Ny advarsel {index + 1}</span>
+                              <select
+                                id={`flagged-warning-category-${submission.id}-${draft.id}`}
+                                value={String(draft.category || '')}
+                                onChange={(event) =>
+                                  onChangeWarningDraftCategory(
+                                    submission.id,
+                                    draft.id,
+                                    event.target.value,
+                                  )
+                                }
+                              >
+                                <option value="">Velg kategori</option>
+                                {availableWarningCategories.map((category) => (
+                                  <option key={`${draft.id}-${category}`} value={category}>
+                                    {category}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              className="ghost danger-button"
+                              onClick={() => onRemoveWarningDraft(submission.id, draft.id)}
+                            >
+                              Fjern
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="submission-table-actions flagged-action-buttons">
+                    <div className="flagged-category-popup-wrap">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() =>
+                          setFlaggedCategoryPopupOpenId((previous) =>
+                            previous === submission.id ? '' : submission.id,
+                          )
+                        }
+                      >
+                        Ny kategori
+                      </button>
+                      {flaggedCategoryPopupOpenId === submission.id ? (
+                        <div className="flagged-category-popup">
+                          <label
+                            className="field-block"
+                            htmlFor={`flagged-warning-new-category-${submission.id}`}
+                          >
+                            <span>Ny kategori</span>
+                            <input
+                              id={`flagged-warning-new-category-${submission.id}`}
+                              type="text"
+                              value={newWarningCategoryDrafts[submission.id] || ''}
+                              placeholder="f.eks. For sen levering"
+                              onChange={(event) =>
+                                setNewWarningCategoryDrafts((previous) => ({
+                                  ...previous,
+                                  [submission.id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                          {availableWarningCategories.length === 0 ? (
+                            <p className="review-answer-value">
+                              Ingen kategorier finnes ennå. Legg til den første her.
+                            </p>
+                          ) : null}
+                          <div className="flagged-category-popup-actions">
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() => setFlaggedCategoryPopupOpenId('')}
+                            >
+                              Lukk
+                            </button>
+                            <button
+                              type="button"
+                              className="cta"
+                              onClick={() => onAddWarningCategory(submission)}
+                              disabled={flaggedState.categorySaving}
+                            >
+                              {flaggedState.categorySaving ? 'Lagrer...' : 'Lagre kategori'}
+                            </button>
+                          </div>
+                          {flaggedState.categoryError ? (
+                            <p className="forms-error">{flaggedState.categoryError}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                     <button
                       type="button"
                       className="cta"
@@ -5394,6 +5933,76 @@ function FormPage() {
     )
   }
 
+  function renderRemarksPage() {
+    return (
+      <div className="remarks-page" id="remarks-section">
+        <div className="history-header">
+          <div className="history-title-block">
+            <h3>Remarks</h3>
+            <p className="history-legend">
+              Oversikt over registrerte advarsler per telefonnummer og kategori.
+            </p>
+          </div>
+        </div>
+
+        {loadingSubmissions ? <p>Laster remarks...</p> : null}
+        {!loadingSubmissions && warningSubmissions.length === 0 ? (
+          <p>Ingen registrerte advarsler ennå.</p>
+        ) : null}
+        {!loadingSubmissions && warningSubmissions.length > 0 ? (
+          <>
+            <div className="remarks-summary-row">
+              <span className="submission-status-badge is-flagged">
+                {remarksOverview.totalWarnings} advarsler
+              </span>
+              <span className="submission-status-badge is-reviewed">
+                {remarksOverview.rows.length} telefonnummer
+              </span>
+            </div>
+            {remarksOverview.withoutPhoneCount > 0 ? (
+              <p className="review-pending-note">
+                {remarksOverview.withoutPhoneCount} advarsler mangler telefonnummer og vises ikke i listen under.
+              </p>
+            ) : null}
+            <div className="remarks-list">
+              {remarksOverview.rows.map((entry) => (
+                <article key={entry.phone} className="response-card remarks-card">
+                  <div className="remarks-card-header">
+                    <div>
+                      <h4>{entry.phone}</h4>
+                      {entry.latestName ? <p>{entry.latestName}</p> : null}
+                    </div>
+                    <span className="remarks-count-badge">
+                      {entry.warningCount} {entry.warningCount === 1 ? 'advarsel' : 'advarsler'}
+                    </span>
+                  </div>
+                  <div className="remarks-meta-grid">
+                    <p>
+                      <strong>Siste lokasjon:</strong> {entry.latestLocation || '-'}
+                    </p>
+                    <p>
+                      <strong>Sist registrert:</strong> {formatTime(entry.latestSubmittedAt)}
+                    </p>
+                  </div>
+                  <div className="remarks-category-list">
+                    {entry.categoryEntries.map((category) => (
+                      <span
+                        key={`${entry.phone}-${category.label}`}
+                        className="remarks-category-chip"
+                      >
+                        {category.label}: {category.count}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </div>
+    )
+  }
+
   function renderEditorQuestionSummaryList() {
     return (
       <div className="editor-question-summary-list">
@@ -5413,23 +6022,16 @@ function FormPage() {
   return (
     <div
       className={`forms-page stengeskjema-page ${isStandalonePublicForm ? 'public-form-page' : ''} ${
-        isHistoryView || isDeliveryView || isDeliverySettingsView ? 'history-page' : ''
+        isHistoryView || isDeliveryView || isDeliverySettingsView || isRemarksView ? 'history-page' : ''
       }`}
     >
-      {isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView || isDeliverySettingsView ? (
+      {isAdminShellView ? (
         <form action="/skjema" method="get">
           <button type="submit" className="admin-login-link">
             Tilbake til hovedmeny
           </button>
         </form>
-      ) : !isStandalonePublicForm &&
-        !isSubmissionsView &&
-        !isEditPage &&
-        !isHistoryView &&
-        !isFlaggedView &&
-        !isReviewView &&
-        !isDeliverySettingsView &&
-        !isDeliveryView ? (
+      ) : !isStandalonePublicForm ? (
         <form action="/skjema" method="get">
           <button type="submit" className="admin-login-link">
             Tilbake til alle skjema
@@ -5448,13 +6050,7 @@ function FormPage() {
         <section className="form-entry">
           <p className="forms-error">{receiptError}</p>
         </section>
-      ) : !isSubmissionsView &&
-        !isEditPage &&
-        !isHistoryView &&
-        !isFlaggedView &&
-        !isReviewView &&
-        !isReceiptPage &&
-        !isPublicFormReady ? (
+      ) : !isAdminShellView && !isReceiptPage && !isPublicFormReady ? (
         <section className="form-entry">
           <p>{publicCopy.loadingForm}</p>
         </section>
@@ -5594,13 +6190,7 @@ function FormPage() {
                 </>
               ) : null}
             </section>
-          ) : !isSubmissionsView &&
-            !isEditPage &&
-            !isHistoryView &&
-            !isFlaggedView &&
-            !isReviewView &&
-            !isDeliverySettingsView &&
-            !isDeliveryView ? (
+          ) : !isAdminShellView ? (
             <section className="form-entry">
               {isSubmissionEditMode ? <p className="field-help">{publicCopy.editingSubmission}</p> : null}
               <div className="form-entry-header">
@@ -5673,10 +6263,7 @@ function FormPage() {
 
           {submitOverlay.open &&
           !isReceiptPage &&
-          !isSubmissionsView &&
-          !isEditPage &&
-          !isFlaggedView &&
-          !isReviewView ? (
+          !isAdminShellView ? (
             <div className="submit-overlay" role="status" aria-live="polite" aria-busy={submitOverlay.status === 'submitting'}>
               <div className={`submit-overlay-card is-${submitOverlay.status}`}>
                 {submitOverlay.status === 'submitting' ? (
@@ -5698,27 +6285,21 @@ function FormPage() {
         </>
       )}
 
-      {(isEditPage ||
-        isSubmissionsView ||
-        isHistoryView ||
-        isFlaggedView ||
-        isReviewView ||
-        isDeliveryView ||
-        isDeliverySettingsView) &&
-      !isAdmin &&
-      !loading ? (
+      {isAdminShellView && !isAdmin && !loading ? (
         <section className="admin-login-line">
           <p className="forms-error">Kun admin har tilgang til denne siden.</p>
         </section>
       ) : null}
 
-      {isAdmin && (isSubmissionsView || isEditPage || isHistoryView || isFlaggedView || isReviewView || isDeliveryView || isDeliverySettingsView) ? (
-        <section className={isEditPage || isSubmissionsView || isHistoryView || isFlaggedView || isReviewView || isDeliveryView || isDeliverySettingsView ? 'admin-edit-shell' : 'admin-box'}>
+      {isAdmin && isAdminShellView ? (
+        <section className="admin-edit-shell">
           {loading ? <p>Kontrollerer innlogging...</p> : null}
           {error ? <p className="forms-error">{error}</p> : null}
 
             {isDeliverySettingsView ? (
               renderDeliverySettingsPage()
+            ) : isRemarksView ? (
+              renderRemarksPage()
             ) : isEditPage ? (
               <div className="admin-editor">
                 <div className="editor-mode-header">
