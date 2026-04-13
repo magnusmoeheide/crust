@@ -183,6 +183,7 @@ function createWarningDraft(category = '') {
   return {
     id: `warning-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     category: String(category || '').trim(),
+    comment: '',
   }
 }
 
@@ -194,6 +195,7 @@ function normalizeSubmissionWarningEntry(entry) {
 
   return {
     category,
+    comment: String(entry?.comment || '').trim(),
     recordedAt: entry?.recordedAt || null,
     recordedBy: String(entry?.recordedBy || '').trim(),
   }
@@ -212,6 +214,7 @@ function getSubmissionWarnings(submission) {
     return [
       {
         category: String(submission?.warningCategory || '').trim() || 'Uten kategori',
+        comment: '',
         recordedAt: submission?.warningRecordedAt || null,
         recordedBy: String(submission?.warningRecordedBy || '').trim(),
       },
@@ -219,6 +222,23 @@ function getSubmissionWarnings(submission) {
   }
 
   return []
+}
+
+function normalizeManualRemarkEntry(entry) {
+  const phone = normalizeNorwegianPhoneNumber(entry?.phone)
+  const category = String(entry?.category || '').trim()
+  if (!phone || !category) {
+    return null
+  }
+
+  return {
+    phone,
+    name: String(entry?.name || '').trim(),
+    category,
+    comment: String(entry?.comment || '').trim(),
+    recordedAt: entry?.recordedAt || null,
+    recordedBy: String(entry?.recordedBy || '').trim(),
+  }
 }
 
 function parseQuestionOptions(rawOptions) {
@@ -870,6 +890,27 @@ function getSubmissionDayKey(timestamp) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+function getTimestampSeconds(timestamp) {
+  if (!timestamp) {
+    return 0
+  }
+
+  if (typeof timestamp?.seconds === 'number') {
+    return timestamp.seconds
+  }
+
+  if (typeof timestamp?.toDate === 'function') {
+    const date = timestamp.toDate()
+    return date instanceof Date ? Math.floor(date.getTime() / 1000) : 0
+  }
+
+  if (timestamp instanceof Date) {
+    return Math.floor(timestamp.getTime() / 1000)
+  }
+
+  return 0
 }
 
 function formatSubmissionDayLabel(dayKey) {
@@ -1889,7 +1930,9 @@ function FormPage() {
   })
 
   const [submissions, setSubmissions] = useState([])
+  const [manualRemarks, setManualRemarks] = useState([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
+  const [loadingManualRemarks, setLoadingManualRemarks] = useState(false)
   const [statusUpdateState, setStatusUpdateState] = useState({})
   const [deleteSubmissionState, setDeleteSubmissionState] = useState({})
   const [selectedSubmissionId, setSelectedSubmissionId] = useState('')
@@ -1923,6 +1966,20 @@ function FormPage() {
   const [flaggedCategoryPopupOpenId, setFlaggedCategoryPopupOpenId] = useState('')
   const [flaggedActionState, setFlaggedActionState] = useState({})
   const [flaggedCollapsedIds, setFlaggedCollapsedIds] = useState({})
+  const [remarkDraftPhone, setRemarkDraftPhone] = useState('')
+  const [remarkDraftName, setRemarkDraftName] = useState('')
+  const [remarkDraftCategory, setRemarkDraftCategory] = useState('')
+  const [remarkDraftComment, setRemarkDraftComment] = useState('')
+  const [remarkState, setRemarkState] = useState({
+    saving: false,
+    error: '',
+    message: '',
+    categorySaving: false,
+    categoryError: '',
+  })
+  const [remarkCategoryPopupOpen, setRemarkCategoryPopupOpen] = useState(false)
+  const [newRemarkCategoryDraft, setNewRemarkCategoryDraft] = useState('')
+  const [expandedRemarkPhones, setExpandedRemarkPhones] = useState({})
   const [analysisActionState, setAnalysisActionState] = useState({})
   const [deliveryGroupByNeighborhood, setDeliveryGroupByNeighborhood] = useState(false)
   const [deliveryGroupByProductPerCity, setDeliveryGroupByProductPerCity] = useState(false)
@@ -2559,6 +2616,62 @@ function FormPage() {
     }
 
     loadSubmissions()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeFormSlug, isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setManualRemarks([])
+      return
+    }
+
+    let cancelled = false
+
+    async function loadManualRemarks() {
+      setLoadingManualRemarks(true)
+
+      try {
+        const remarksQuery = query(collection(db, 'formRemarks'), where('formSlug', '==', activeFormSlug))
+        const snapshot = await getDocs(remarksQuery)
+
+        const rows = snapshot.docs
+          .map((item) => {
+            const normalized = normalizeManualRemarkEntry(item.data())
+            if (!normalized) {
+              return null
+            }
+
+            return {
+              id: item.id,
+              formSlug: activeFormSlug,
+              ...normalized,
+            }
+          })
+          .filter(Boolean)
+          .sort((a, b) => {
+            return getTimestampSeconds(b.recordedAt) - getTimestampSeconds(a.recordedAt)
+          })
+
+        if (cancelled) {
+          return
+        }
+
+        setManualRemarks(rows)
+      } catch {
+        if (!cancelled) {
+          setManualRemarks([])
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingManualRemarks(false)
+        }
+      }
+    }
+
+    loadManualRemarks()
 
     return () => {
       cancelled = true
@@ -4223,6 +4336,24 @@ function FormPage() {
     }))
   }
 
+  function onChangeWarningDraftComment(submissionId, draftId, value) {
+    if (!submissionId || !draftId) {
+      return
+    }
+
+    setFlaggedWarningDrafts((previous) => ({
+      ...previous,
+      [submissionId]: (Array.isArray(previous[submissionId]) ? previous[submissionId] : []).map((draft) =>
+        draft?.id === draftId
+          ? {
+              ...draft,
+              comment: String(value || ''),
+            }
+          : draft,
+      ),
+    }))
+  }
+
   function onToggleFlaggedCollapsed(submissionId) {
     if (!submissionId) {
       return
@@ -4281,6 +4412,7 @@ function FormPage() {
       ...existingWarnings,
       ...pendingWarningDrafts.map((draft) => ({
         category: String(draft?.category || '').trim(),
+        comment: String(draft?.comment || '').trim(),
         recordedAt,
         recordedBy,
       })),
@@ -4367,21 +4499,83 @@ function FormPage() {
   }
 
   async function onAddWarningCategory(submission) {
-    if (!submission?.id) {
-      return
-    }
+    const nextCategory = String(newWarningCategoryDrafts[submission?.id] || '').trim()
+    await onSaveWarningCategory(nextCategory, {
+      onSaving: () =>
+        setFlaggedActionState((previous) => ({
+          ...previous,
+          [submission.id]: {
+            ...(previous[submission.id] || {}),
+            saving: false,
+            error: '',
+            categorySaving: true,
+            categoryError: '',
+          },
+        })),
+      onSaved: (mergedCategories, selectedCategory) => {
+        setFlaggedWarningDrafts((previous) => {
+          const existingDrafts = Array.isArray(previous[submission.id]) ? previous[submission.id] : []
+          if (existingDrafts.length === 0) {
+            return {
+              ...previous,
+              [submission.id]: [createWarningDraft(selectedCategory)],
+            }
+          }
 
-    const nextCategory = String(newWarningCategoryDrafts[submission.id] || '').trim()
+          const nextDrafts = existingDrafts.map((draft, index) =>
+            index === existingDrafts.length - 1 && !String(draft?.category || '').trim()
+              ? { ...draft, category: selectedCategory }
+              : draft,
+          )
+
+          return {
+            ...previous,
+            [submission.id]: nextDrafts,
+          }
+        })
+        setNewWarningCategoryDrafts((previous) => ({
+          ...previous,
+          [submission.id]: '',
+        }))
+        setFlaggedCategoryPopupOpenId('')
+        setFlaggedActionState((previous) => ({
+          ...previous,
+          [submission.id]: {
+            ...(previous[submission.id] || {}),
+            saving: false,
+            error: '',
+            categorySaving: false,
+            categoryError: '',
+          },
+        }))
+      },
+      onValidationError: (message) =>
+        setFlaggedActionState((previous) => ({
+          ...previous,
+          [submission.id]: {
+            ...(previous[submission.id] || {}),
+            saving: false,
+            categorySaving: false,
+            categoryError: message,
+          },
+        })),
+      onSaveError: (message) =>
+        setFlaggedActionState((previous) => ({
+          ...previous,
+          [submission.id]: {
+            ...(previous[submission.id] || {}),
+            saving: false,
+            categorySaving: false,
+            categoryError: message,
+          },
+        })),
+    })
+  }
+
+  async function onSaveWarningCategory(nextCategoryInput, callbacks = {}) {
+    const nextCategory = String(nextCategoryInput || '').trim()
     if (!nextCategory) {
-      setFlaggedActionState((previous) => ({
-        ...previous,
-        [submission.id]: {
-          ...(previous[submission.id] || {}),
-          saving: false,
-          categorySaving: false,
-          categoryError: 'Skriv inn et kategorinavn før du legger det til.',
-        },
-      }))
+      callbacks.onValidationError?.('Skriv inn et kategorinavn før du legger det til.')
       return
     }
 
@@ -4390,16 +4584,7 @@ function FormPage() {
       mergedCategories.find((category) => category.toLowerCase() === nextCategory.toLowerCase()) ||
       nextCategory
 
-    setFlaggedActionState((previous) => ({
-      ...previous,
-      [submission.id]: {
-        ...(previous[submission.id] || {}),
-        saving: false,
-        error: '',
-        categorySaving: true,
-        categoryError: '',
-      },
-    }))
+    callbacks.onSaving?.()
 
     try {
       await setDoc(
@@ -4416,55 +4601,153 @@ function FormPage() {
         ...previous,
         warningCategories: mergedCategories,
       }))
-      setFlaggedWarningDrafts((previous) => {
-        const existingDrafts = Array.isArray(previous[submission.id]) ? previous[submission.id] : []
-        if (existingDrafts.length === 0) {
-          return {
-            ...previous,
-            [submission.id]: [createWarningDraft(selectedCategory)],
-          }
-        }
+      callbacks.onSaved?.(mergedCategories, selectedCategory)
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      callbacks.onSaveError?.(
+        error?.code === 'permission-denied'
+          ? `Kunne ikke lagre kategorien${code}. Mangler tilgang i Firestore-regler.`
+          : `Kunne ikke lagre kategorien${code}.`,
+      )
+    }
+  }
 
-        const nextDrafts = existingDrafts.map((draft, index) =>
-          index === existingDrafts.length - 1 && !String(draft?.category || '').trim()
-            ? { ...draft, category: selectedCategory }
-            : draft,
-        )
-
-        return {
+  async function onAddRemarkCategory() {
+    await onSaveWarningCategory(newRemarkCategoryDraft, {
+      onSaving: () =>
+        setRemarkState((previous) => ({
           ...previous,
-          [submission.id]: nextDrafts,
-        }
-      })
-      setNewWarningCategoryDrafts((previous) => ({
-        ...previous,
-        [submission.id]: '',
-      }))
-      setFlaggedCategoryPopupOpenId('')
-      setFlaggedActionState((previous) => ({
-        ...previous,
-        [submission.id]: {
-          ...(previous[submission.id] || {}),
+          saving: false,
+          error: '',
+          categorySaving: true,
+          categoryError: '',
+        })),
+      onSaved: (_mergedCategories, selectedCategory) => {
+        setNewRemarkCategoryDraft('')
+        setRemarkDraftCategory(selectedCategory)
+        setRemarkCategoryPopupOpen(false)
+        setRemarkState((previous) => ({
+          ...previous,
           saving: false,
           error: '',
           categorySaving: false,
           categoryError: '',
-        },
-      }))
-    } catch (error) {
-      const code = error?.code ? ` (${error.code})` : ''
-      setFlaggedActionState((previous) => ({
-        ...previous,
-        [submission.id]: {
-          ...(previous[submission.id] || {}),
+        }))
+      },
+      onValidationError: (message) =>
+        setRemarkState((previous) => ({
+          ...previous,
           saving: false,
           categorySaving: false,
-          categoryError:
-            error?.code === 'permission-denied'
-              ? `Kunne ikke lagre kategorien${code}. Mangler tilgang i Firestore-regler.`
-              : `Kunne ikke lagre kategorien${code}.`,
-        },
+          categoryError: message,
+        })),
+      onSaveError: (message) =>
+        setRemarkState((previous) => ({
+          ...previous,
+          saving: false,
+          categorySaving: false,
+          categoryError: message,
+        })),
+    })
+  }
+
+  function onToggleRemarkPhone(phone) {
+    if (!phone) {
+      return
+    }
+
+    setExpandedRemarkPhones((previous) => ({
+      ...previous,
+      [phone]: !previous[phone],
+    }))
+  }
+
+  async function onSaveManualRemark(event) {
+    event.preventDefault()
+
+    const normalizedPhone = normalizeNorwegianPhoneNumber(remarkDraftPhone)
+    const category = String(remarkDraftCategory || '').trim()
+    const name = String(remarkDraftName || '').trim()
+    const comment = String(remarkDraftComment || '').trim()
+
+    if (!isValidNorwegianPhoneNumber(normalizedPhone)) {
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: 'Oppgi et gyldig telefonnummer med 8 sifre.',
+        message: '',
       }))
+      return
+    }
+
+    if (!category) {
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: 'Velg kategori før remark lagres.',
+        message: '',
+      }))
+      return
+    }
+
+    setRemarkState({
+      saving: true,
+      error: '',
+      message: '',
+      categorySaving: false,
+      categoryError: '',
+    })
+
+    const remarkRef = doc(collection(db, 'formRemarks'))
+    const recordedAt = new Date()
+    const nextRemark = {
+      formSlug: activeFormSlug,
+      phone: normalizedPhone,
+      name,
+      category,
+      comment,
+      recordedAt,
+      recordedBy: user?.email || 'admin',
+    }
+
+    try {
+      await setDoc(remarkRef, {
+        ...nextRemark,
+        recordedAt: serverTimestamp(),
+      })
+
+      setManualRemarks((previous) =>
+        [{ id: remarkRef.id, ...nextRemark }, ...previous].sort(
+          (a, b) => getTimestampSeconds(b.recordedAt) - getTimestampSeconds(a.recordedAt),
+        ),
+      )
+      setExpandedRemarkPhones((previous) => ({
+        ...previous,
+        [normalizedPhone]: true,
+      }))
+      setRemarkDraftPhone(normalizedPhone)
+      setRemarkDraftName(name)
+      setRemarkDraftCategory('')
+      setRemarkDraftComment('')
+      setRemarkState({
+        saving: false,
+        error: '',
+        message: 'Remark lagret.',
+        categorySaving: false,
+        categoryError: '',
+      })
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      setRemarkState({
+        saving: false,
+        error:
+          error?.code === 'permission-denied'
+            ? `Kunne ikke lagre remark${code}. Mangler tilgang i Firestore-regler.`
+            : `Kunne ikke lagre remark${code}.`,
+        message: '',
+        categorySaving: false,
+        categoryError: '',
+      })
     }
   }
 
@@ -5075,14 +5358,16 @@ function FormPage() {
         ...submissions.flatMap((submission) =>
           getSubmissionWarnings(submission).map((warning) => warning.category),
         ),
+        ...manualRemarks.map((remark) => remark.category),
       ]),
-    [formData.warningCategories, submissions],
+    [formData.warningCategories, manualRemarks, submissions],
   )
   const warningSubmissions = useMemo(
     () => submissions.filter((submission) => getSubmissionWarnings(submission).length > 0),
     [submissions],
   )
   const remarksOverview = useMemo(() => {
+    const warningEntries = []
     const byPhone = new Map()
     let withoutPhoneCount = 0
     let totalWarnings = 0
@@ -5103,18 +5388,8 @@ function FormPage() {
       const locationName = getSubmissionLocation(submission.answers, formData.questions) || '-'
       const nameValue = getSubmissionName(submission.answers, formData.questions)
       const nextName = nameValue && nameValue !== phone ? nameValue : ''
-      const existing = byPhone.get(phone) || {
-        phone,
-        warningCount: 0,
-        latestSubmittedAt: submission.submittedAt || null,
-        latestSubmittedAtSeconds: submission.submittedAt?.seconds || 0,
-        latestLocation: locationName,
-        latestName: nextName,
-        categoryCounts: {},
-      }
 
-      submissionWarnings.forEach((warning) => {
-        const categoryLabel = String(warning.category || '').trim() || 'Uten kategori'
+      submissionWarnings.forEach((warning, index) => {
         const warningDateValue = warning.recordedAt || submission.submittedAt || null
         const warningDate =
           warningDateValue instanceof Date
@@ -5122,25 +5397,86 @@ function FormPage() {
             : typeof warningDateValue?.toDate === 'function'
               ? warningDateValue.toDate()
               : null
-        const warningSeconds = warningDate ? Math.floor(warningDate.getTime() / 1000) : submission.submittedAt?.seconds || 0
+        const warningSeconds =
+          warningDate ? Math.floor(warningDate.getTime() / 1000) : getTimestampSeconds(submission.submittedAt)
 
-        existing.warningCount += 1
-        existing.categoryCounts[categoryLabel] = (existing.categoryCounts[categoryLabel] || 0) + 1
-
-        if (warningSeconds >= existing.latestSubmittedAtSeconds) {
-          existing.latestSubmittedAt = warningDateValue || submission.submittedAt || null
-          existing.latestSubmittedAtSeconds = warningSeconds
-          existing.latestLocation = locationName
-          existing.latestName = nextName
-        }
+        warningEntries.push({
+          id: `${submission.id}-warning-${index}`,
+          phone,
+          name: nextName,
+          location: locationName,
+          category: String(warning.category || '').trim() || 'Uten kategori',
+          comment: String(warning.comment || '').trim(),
+          recordedAt: warningDateValue || submission.submittedAt || null,
+          recordedAtSeconds: warningSeconds,
+          recordedBy: warning.recordedBy || '',
+          sourceType: Array.isArray(submission.flaggedAnswers) && submission.flaggedAnswers.length > 0 ? 'flagged' : 'submission',
+          sourceLabel:
+            Array.isArray(submission.flaggedAnswers) && submission.flaggedAnswers.length > 0
+              ? 'Flagget innsending'
+              : 'Innsending',
+          submissionId: submission.id,
+          receiptToken: submission.receiptToken || '',
+          flaggedAnswers: Array.isArray(submission.flaggedAnswers) ? submission.flaggedAnswers : [],
+        })
       })
+    })
 
-      byPhone.set(phone, existing)
+    manualRemarks.forEach((remark) => {
+      totalWarnings += 1
+      warningEntries.push({
+        id: remark.id,
+        phone: remark.phone,
+        name: remark.name,
+        location: '-',
+        category: remark.category,
+        comment: remark.comment,
+        recordedAt: remark.recordedAt || null,
+        recordedAtSeconds: getTimestampSeconds(remark.recordedAt),
+        recordedBy: remark.recordedBy || '',
+        sourceType: 'manual',
+        sourceLabel: 'Registrert i remarks',
+        submissionId: '',
+        receiptToken: '',
+        flaggedAnswers: [],
+      })
+    })
+
+    warningEntries.forEach((warningEntry) => {
+      const existing = byPhone.get(warningEntry.phone) || {
+        phone: warningEntry.phone,
+        warningCount: 0,
+        latestSubmittedAt: warningEntry.recordedAt || null,
+        latestSubmittedAtSeconds: warningEntry.recordedAtSeconds || 0,
+        latestLocation: warningEntry.location || '-',
+        latestName: warningEntry.name || '',
+        categoryCounts: {},
+        entries: [],
+      }
+
+      existing.warningCount += 1
+      existing.categoryCounts[warningEntry.category] = (existing.categoryCounts[warningEntry.category] || 0) + 1
+      existing.entries.push(warningEntry)
+
+      if ((warningEntry.recordedAtSeconds || 0) >= existing.latestSubmittedAtSeconds) {
+        existing.latestSubmittedAt = warningEntry.recordedAt || null
+        existing.latestSubmittedAtSeconds = warningEntry.recordedAtSeconds || 0
+        existing.latestLocation = warningEntry.location || '-'
+        existing.latestName = warningEntry.name || ''
+      }
+
+      byPhone.set(warningEntry.phone, existing)
     })
 
     const rows = Array.from(byPhone.values())
       .map((entry) => ({
         ...entry,
+        entries: entry.entries.sort((a, b) => {
+          if ((b.recordedAtSeconds || 0) !== (a.recordedAtSeconds || 0)) {
+            return (b.recordedAtSeconds || 0) - (a.recordedAtSeconds || 0)
+          }
+          return a.category.localeCompare(b.category, 'nb')
+        }),
         categoryEntries: Object.entries(entry.categoryCounts)
           .map(([label, count]) => ({ label, count }))
           .sort((a, b) => {
@@ -5165,7 +5501,7 @@ function FormPage() {
       withoutPhoneCount,
       totalWarnings,
     }
-  }, [formData.questions, warningSubmissions])
+  }, [formData.questions, manualRemarks, warningSubmissions])
   const submissionsByLocation = visibleSubmissions
     .reduce((accumulator, submission) => {
       const location = getSubmissionLocation(submission.answers, formData.questions) || 'Ukjent lokasjon'
@@ -5575,6 +5911,7 @@ function FormPage() {
                       {existingWarnings.map((warning, index) => (
                         <p key={`${submission.id}-warning-summary-${index}`}>
                           <strong>{index + 1}.</strong> {warning.category}
+                          {warning.comment ? ` | ${warning.comment}` : ''}
                           {warning.recordedBy ? ` | ${warning.recordedBy}` : ''}
                         </p>
                       ))}
@@ -5624,10 +5961,13 @@ function FormPage() {
                     {existingWarnings.length > 0 ? (
                       <div className="flagged-warning-list">
                         {existingWarnings.map((warning, index) => (
-                          <p key={`${submission.id}-warning-existing-${index}`} className="flagged-warning-existing-item">
-                            <strong>{index + 1}.</strong> {warning.category}
-                            {warning.recordedBy ? ` | ${warning.recordedBy}` : ''}
-                          </p>
+                          <div key={`${submission.id}-warning-existing-${index}`} className="flagged-warning-existing-item">
+                            <p>
+                              <strong>{index + 1}.</strong> {warning.category}
+                              {warning.recordedBy ? ` | ${warning.recordedBy}` : ''}
+                            </p>
+                            {warning.comment ? <p className="review-answer-value">{warning.comment}</p> : null}
+                          </div>
                         ))}
                       </div>
                     ) : null}
@@ -5658,6 +5998,25 @@ function FormPage() {
                                   </option>
                                 ))}
                               </select>
+                            </label>
+                            <label
+                              className="field-block"
+                              htmlFor={`flagged-warning-comment-${submission.id}-${draft.id}`}
+                            >
+                              <span>Kommentar</span>
+                              <textarea
+                                id={`flagged-warning-comment-${submission.id}-${draft.id}`}
+                                rows={3}
+                                value={String(draft.comment || '')}
+                                placeholder="Legg til kommentar"
+                                onChange={(event) =>
+                                  onChangeWarningDraftComment(
+                                    submission.id,
+                                    draft.id,
+                                    event.target.value,
+                                  )
+                                }
+                              />
                             </label>
                             <button
                               type="button"
@@ -5934,22 +6293,123 @@ function FormPage() {
   }
 
   function renderRemarksPage() {
+    const loadingRemarks = loadingSubmissions || loadingManualRemarks
+
     return (
       <div className="remarks-page" id="remarks-section">
         <div className="history-header">
           <div className="history-title-block">
             <h3>Remarks</h3>
             <p className="history-legend">
-              Oversikt over registrerte advarsler per telefonnummer og kategori.
+              Registrer nye remarks og åpne hvert telefonnummer for å se alle remarks, bilder og kommentarer.
             </p>
           </div>
         </div>
 
-        {loadingSubmissions ? <p>Laster remarks...</p> : null}
-        {!loadingSubmissions && warningSubmissions.length === 0 ? (
+        <form className="response-card remarks-create-card" onSubmit={onSaveManualRemark}>
+          <div className="remarks-create-fields">
+            <label className="field-block" htmlFor="remarks-phone">
+              <span>Telefonnummer</span>
+              <input
+                id="remarks-phone"
+                type="tel"
+                inputMode="numeric"
+                placeholder="8 siffer"
+                value={remarkDraftPhone}
+                onChange={(event) => setRemarkDraftPhone(event.target.value)}
+              />
+            </label>
+            <label className="field-block" htmlFor="remarks-name">
+              <span>Navn</span>
+              <input
+                id="remarks-name"
+                type="text"
+                placeholder="Valgfritt"
+                value={remarkDraftName}
+                onChange={(event) => setRemarkDraftName(event.target.value)}
+              />
+            </label>
+            <label className="field-block" htmlFor="remarks-category">
+              <span>Kategori</span>
+              <select
+                id="remarks-category"
+                value={remarkDraftCategory}
+                onChange={(event) => setRemarkDraftCategory(event.target.value)}
+              >
+                <option value="">Velg kategori</option>
+                {availableWarningCategories.map((category) => (
+                  <option key={`remark-category-${category}`} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="field-block" htmlFor="remarks-comment">
+            <span>Kommentar</span>
+            <textarea
+              id="remarks-comment"
+              rows={4}
+              placeholder="Legg til kommentar for denne remarken"
+              value={remarkDraftComment}
+              onChange={(event) => setRemarkDraftComment(event.target.value)}
+            />
+          </label>
+          <div className="submission-table-actions flagged-action-buttons">
+            <div className="flagged-category-popup-wrap">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setRemarkCategoryPopupOpen((previous) => !previous)}
+              >
+                Ny kategori
+              </button>
+              {remarkCategoryPopupOpen ? (
+                <div className="flagged-category-popup">
+                  <label className="field-block" htmlFor="remarks-new-category">
+                    <span>Ny kategori</span>
+                    <input
+                      id="remarks-new-category"
+                      type="text"
+                      value={newRemarkCategoryDraft}
+                      placeholder="f.eks. Møtte ikke opp"
+                      onChange={(event) => setNewRemarkCategoryDraft(event.target.value)}
+                    />
+                  </label>
+                  <div className="flagged-category-popup-actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => setRemarkCategoryPopupOpen(false)}
+                    >
+                      Lukk
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={onAddRemarkCategory}
+                      disabled={remarkState.categorySaving}
+                    >
+                      {remarkState.categorySaving ? 'Lagrer...' : 'Lagre kategori'}
+                    </button>
+                  </div>
+                  {remarkState.categoryError ? <p className="forms-error">{remarkState.categoryError}</p> : null}
+                </div>
+              ) : null}
+            </div>
+            <button type="submit" className="cta" disabled={remarkState.saving}>
+              {remarkState.saving ? 'Lagrer...' : 'Lagre remark'}
+            </button>
+          </div>
+          {remarkState.error ? <p className="forms-error">{remarkState.error}</p> : null}
+          {remarkState.message ? <p className="forms-success">{remarkState.message}</p> : null}
+        </form>
+
+        {loadingRemarks ? <p>Laster remarks...</p> : null}
+        {!loadingRemarks && remarksOverview.totalWarnings === 0 ? (
           <p>Ingen registrerte advarsler ennå.</p>
         ) : null}
-        {!loadingSubmissions && warningSubmissions.length > 0 ? (
+        {!loadingRemarks && remarksOverview.totalWarnings > 0 ? (
           <>
             <div className="remarks-summary-row">
               <span className="submission-status-badge is-flagged">
@@ -5967,15 +6427,27 @@ function FormPage() {
             <div className="remarks-list">
               {remarksOverview.rows.map((entry) => (
                 <article key={entry.phone} className="response-card remarks-card">
-                  <div className="remarks-card-header">
-                    <div>
-                      <h4>{entry.phone}</h4>
-                      {entry.latestName ? <p>{entry.latestName}</p> : null}
+                  <button
+                    type="button"
+                    className="ghost remarks-expand-toggle"
+                    onClick={() => onToggleRemarkPhone(entry.phone)}
+                    aria-expanded={Boolean(expandedRemarkPhones[entry.phone])}
+                  >
+                    <div className="remarks-card-header">
+                      <div>
+                        <h4>{entry.phone}</h4>
+                        {entry.latestName ? <p>{entry.latestName}</p> : null}
+                      </div>
+                      <div className="remarks-card-header-right">
+                        <span className="remarks-count-badge">
+                          {entry.warningCount} {entry.warningCount === 1 ? 'advarsel' : 'advarsler'}
+                        </span>
+                        <span className="review-answer-value">
+                          {expandedRemarkPhones[entry.phone] ? 'Skjul' : 'Vis alle'}
+                        </span>
+                      </div>
                     </div>
-                    <span className="remarks-count-badge">
-                      {entry.warningCount} {entry.warningCount === 1 ? 'advarsel' : 'advarsler'}
-                    </span>
-                  </div>
+                  </button>
                   <div className="remarks-meta-grid">
                     <p>
                       <strong>Siste lokasjon:</strong> {entry.latestLocation || '-'}
@@ -5994,6 +6466,94 @@ function FormPage() {
                       </span>
                     ))}
                   </div>
+                  {expandedRemarkPhones[entry.phone] ? (
+                    <div className="remarks-detail-list">
+                      {entry.entries.map((remarkEntry, index) => (
+                        <article key={remarkEntry.id} className="remarks-detail-card">
+                          <div className="remarks-detail-header">
+                            <div className="remarks-detail-badges">
+                              <span className="remarks-category-chip">{remarkEntry.category}</span>
+                              <span className="submission-status-badge is-reviewed">
+                                {remarkEntry.sourceLabel}
+                              </span>
+                            </div>
+                            <p className="review-answer-value">
+                              <strong>{index + 1}.</strong> {formatTime(remarkEntry.recordedAt)}
+                            </p>
+                          </div>
+                          <div className="remarks-meta-grid">
+                            <p>
+                              <strong>Registrert av:</strong> {remarkEntry.recordedBy || '-'}
+                            </p>
+                            <p>
+                              <strong>Lokasjon:</strong> {remarkEntry.location || '-'}
+                            </p>
+                            {remarkEntry.name ? (
+                              <p>
+                                <strong>Navn:</strong> {remarkEntry.name}
+                              </p>
+                            ) : null}
+                          </div>
+                          {remarkEntry.comment ? (
+                            <p className="flagged-answer-comment">
+                              <strong>Kommentar:</strong> {remarkEntry.comment}
+                            </p>
+                          ) : null}
+                          {remarkEntry.receiptToken ? (
+                            <a
+                              className="ghost remarks-receipt-link"
+                              href={`/skjema/${activeFormSlug}/kvittering/${remarkEntry.receiptToken}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Vis kvittering
+                            </a>
+                          ) : null}
+                          {remarkEntry.flaggedAnswers.length > 0 ? (
+                            <div className="remarks-flagged-answer-list">
+                              {remarkEntry.flaggedAnswers.map((item, itemIndex) => {
+                                const hasImagePath = isStorageImagePath(item.value)
+                                const imageUrl = hasImagePath
+                                  ? String(item.imageUrl || flaggedImageUrls[item.value] || '')
+                                  : ''
+
+                                return (
+                                  <article
+                                    key={`${remarkEntry.id}-${item.answerKey || itemIndex}`}
+                                    className="flagged-answer-row remarks-flagged-answer-row"
+                                  >
+                                    <p className="review-answer-label">{item.label}</p>
+                                    {item.comment ? (
+                                      <p className="flagged-answer-comment">
+                                        <strong>Kommentar:</strong> {item.comment}
+                                      </p>
+                                    ) : null}
+                                    {hasImagePath ? (
+                                      imageUrl ? (
+                                        <img
+                                          className="flagged-answer-image"
+                                          src={imageUrl}
+                                          alt={item.label}
+                                          loading="lazy"
+                                        />
+                                      ) : typeof item.imageUrl === 'string' ||
+                                        typeof flaggedImageUrls[item.value] !== 'undefined' ? (
+                                        <p className="review-answer-value">Kunne ikke laste bilde.</p>
+                                      ) : (
+                                        <p className="review-answer-value">Laster bilde...</p>
+                                      )
+                                    ) : (
+                                      <p className="review-answer-value">{String(item.value || '-')}</p>
+                                    )}
+                                  </article>
+                                )
+                              })}
+                            </div>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>

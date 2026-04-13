@@ -2209,8 +2209,23 @@
   margin-bottom: 12px;
 }
 
+.remarks-create-card,
 .remarks-card {
   gap: 12px;
+}
+
+.remarks-create-fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.remarks-expand-toggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  color: inherit;
 }
 
 .remarks-card-header {
@@ -2218,6 +2233,14 @@
   justify-content: space-between;
   gap: 12px;
   align-items: start;
+}
+
+.remarks-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .remarks-card-header h4,
@@ -2256,6 +2279,49 @@
   padding: 5px 10px;
   background: rgba(24, 44, 60, 0.08);
   color: #182c3c;
+}
+
+.remarks-detail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.remarks-detail-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(24, 44, 60, 0.12);
+  background: rgba(24, 44, 60, 0.03);
+}
+
+.remarks-detail-header,
+.remarks-detail-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.remarks-detail-badges {
+  justify-content: flex-start;
+}
+
+.remarks-receipt-link {
+  justify-self: start;
+}
+
+.remarks-flagged-answer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.remarks-flagged-answer-row {
+  border: 1px solid rgba(24, 44, 60, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .flagged-empty-note {

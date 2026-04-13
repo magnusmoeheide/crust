@@ -43,6 +43,10 @@ service cloud.firestore {
       allow update: if isCrustUser();
     }
 
+    match /formRemarks/{docId} {
+      allow create, read, update, delete: if isCrustUser();
+    }
+
     match /formSubmissionReceipts/{docId} {
       allow get: if true;
       allow list: if false;

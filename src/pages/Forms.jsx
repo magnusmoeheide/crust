@@ -102,12 +102,19 @@ function Forms() {
 
     async function loadPendingReviewCounts() {
       try {
-        const snapshot = await getDocs(collection(db, "formSubmissions"));
+        const [submissionResult, remarkResult] = await Promise.allSettled([
+          getDocs(collection(db, "formSubmissions")),
+          getDocs(collection(db, "formRemarks")),
+        ]);
         const nextCounts = {};
         const nextFlaggedCounts = {};
         const nextRemarkCounts = {};
 
-        snapshot.forEach((item) => {
+        if (submissionResult.status !== "fulfilled") {
+          throw submissionResult.reason;
+        }
+
+        submissionResult.value.forEach((item) => {
           const data = item.data();
           const formSlug = String(data?.formSlug || "").trim();
           if (!formSlug) {
@@ -143,6 +150,19 @@ function Forms() {
 
           nextCounts[formSlug] = (nextCounts[formSlug] || 0) + 1;
         });
+
+        if (remarkResult.status === "fulfilled") {
+          remarkResult.value.forEach((item) => {
+            const data = item.data();
+            const formSlug = String(data?.formSlug || "").trim();
+            const category = String(data?.category || "").trim();
+            if (!formSlug || !category) {
+              return;
+            }
+
+            nextRemarkCounts[formSlug] = (nextRemarkCounts[formSlug] || 0) + 1;
+          });
+        }
 
         if (!cancelled) {
           setPendingReviewCounts(nextCounts);
