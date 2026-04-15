@@ -52,6 +52,8 @@ const PUBLIC_FORM_COPY = {
     loadingImage: 'Laster bilde...',
     loadingForm: 'Laster skjema...',
     loadingReceipt: 'Laster kvittering...',
+    preparingReceipt: 'Sender skjemaet og klargjør kvittering...',
+    preparingReceiptHint: 'Ikke lukk eller oppdater siden. Kvitteringen åpnes automatisk.',
     editSubmission: 'Rediger',
     editWindowExpired: 'Redigeringsfristen på 30 minutter er utløpt.',
     editingSubmission: 'Du redigerer en tidligere innsending.',
@@ -78,6 +80,7 @@ const PUBLIC_FORM_COPY = {
     emailAddress: 'E-postadresse',
     selfDeclarationFallback: 'Jeg bekrefter opplysningene i skjemaet.',
     confirmSelfDeclaration: 'Jeg bekrefter egenerklæringen',
+    goToQuestion: 'Gå til spørsmålet',
     optionalNote: ' (ikke obligatorisk)',
   },
   en: {
@@ -97,6 +100,8 @@ const PUBLIC_FORM_COPY = {
     loadingImage: 'Loading image...',
     loadingForm: 'Loading form...',
     loadingReceipt: 'Loading receipt...',
+    preparingReceipt: 'Submitting the form and preparing your receipt...',
+    preparingReceiptHint: 'Do not close or refresh this page. The receipt will open automatically.',
     editSubmission: 'Edit',
     editWindowExpired: 'The 30-minute edit window has expired.',
     editingSubmission: 'You are editing a previous submission.',
@@ -123,6 +128,7 @@ const PUBLIC_FORM_COPY = {
     emailAddress: 'Email address',
     selfDeclarationFallback: 'I confirm the information in the form.',
     confirmSelfDeclaration: 'I confirm the self-declaration',
+    goToQuestion: 'Go to question',
     optionalNote: ' (optional)',
   },
 }
@@ -137,6 +143,110 @@ function toQuestionId(raw) {
     return `question-${Math.random().toString(36).slice(2, 8)}`
   }
   return base
+}
+
+function escapePendingWindowHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function renderPendingReceiptWindow(receiptWindow, { lang = 'no', title, headline, hint }) {
+  if (!receiptWindow || receiptWindow.closed) {
+    return
+  }
+
+  try {
+    const safeTitle = escapePendingWindowHtml(title)
+    const safeHeadline = escapePendingWindowHtml(headline)
+    const safeHint = escapePendingWindowHtml(hint)
+    const documentLanguage = lang === 'en' ? 'en' : 'no'
+
+    receiptWindow.document.open()
+    receiptWindow.document.write(`<!doctype html>
+<html lang="${documentLanguage}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle}</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #182c3c;
+        --surface: #fff4e8;
+        --background: linear-gradient(180deg, #fffaf4 0%, #f6ead9 100%);
+        --border: rgba(24, 44, 60, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+        background: var(--background);
+        color: var(--ink);
+      }
+
+      .card {
+        width: min(420px, 100%);
+        padding: 28px 24px;
+        border-radius: 24px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: 0 22px 46px rgba(24, 44, 60, 0.16);
+        text-align: center;
+      }
+
+      .spinner {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 18px;
+        border-radius: 999px;
+        border: 4px solid rgba(24, 44, 60, 0.14);
+        border-top-color: var(--ink);
+        animation: spin 0.9s linear infinite;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(1.3rem, 4vw, 1.8rem);
+        line-height: 1.15;
+      }
+
+      p {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="status" aria-live="polite" aria-busy="true">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>${safeHeadline}</h1>
+      <p>${safeHint}</p>
+    </main>
+  </body>
+</html>`)
+    receiptWindow.document.close()
+  } catch (error) {
+    console.error('Failed to render pending receipt window', error)
+  }
 }
 
 function sanitizeFileName(name) {
@@ -1705,10 +1815,6 @@ function createEditorQuestion(seed) {
   }
 }
 
-function getTodayInputValue() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 function getFormDraftStorageKey(formSlug) {
   return `${FORM_DRAFT_STORAGE_PREFIX}${formSlug}`
 }
@@ -1906,6 +2012,8 @@ function FormPage() {
   const [availableLocationsError, setAvailableLocationsError] = useState('')
   const [draftReady, setDraftReady] = useState(false)
   const [submitState, setSubmitState] = useState({ submitting: false, message: '', error: '' })
+  const [submitErrorQuestionId, setSubmitErrorQuestionId] = useState('')
+  const [submitErrorTargetId, setSubmitErrorTargetId] = useState('')
   const [submitOverlay, setSubmitOverlay] = useState({ open: false, status: 'idle' })
   const [displayLanguage, setDisplayLanguage] = useState(readPreferredPublicFormLanguage)
   const [englishTranslations, setEnglishTranslations] = useState(readEnglishTranslationCache)
@@ -2356,9 +2464,7 @@ function FormPage() {
       const normalizedValue =
         typeof storedValue !== 'undefined'
           ? String(storedValue)
-          : question.type === 'date'
-            ? getTodayInputValue()
-            : ''
+          : ''
       accumulator[question.id] =
         question.type === 'camera' && !isPersistedImageValue(normalizedValue) ? '' : normalizedValue
       return accumulator
@@ -2455,9 +2561,7 @@ function FormPage() {
       const answerValue =
         typeof answers[question.id] !== 'undefined'
           ? String(answers[question.id] || '')
-          : question.type === 'date'
-            ? getTodayInputValue()
-            : ''
+          : ''
       accumulator[question.id] =
         question.type === 'camera' && !isPersistedImageValue(answerValue) ? '' : answerValue
       return accumulator
@@ -3098,7 +3202,7 @@ function FormPage() {
       if (isSectionQuestion(question)) {
         return accumulator
       }
-      accumulator[question.id] = question.type === 'date' ? getTodayInputValue() : ''
+      accumulator[question.id] = ''
       return accumulator
     }, {})
 
@@ -3114,6 +3218,8 @@ function FormPage() {
     setCameraCapturedAt({})
     setFormInstanceKey((previous) => previous + 1)
     clearFormDraft(activeFormSlug)
+    setSubmitErrorQuestionId('')
+    setSubmitErrorTargetId('')
     setSubmitState({
       submitting: false,
       message: '',
@@ -3121,11 +3227,94 @@ function FormPage() {
     })
   }
 
+  function getQuestionValidationTargetId(question) {
+    const answerValue = String(answers[question.id] || '').trim()
+    const selectedBehavior = getSelectOptionBehavior(question, answerValue)
+
+    if (question.type === 'select' && selectedBehavior.kind === 'input' && answerValue) {
+      return getSelectDetailAnswerKey(question.id)
+    }
+
+    if (question.type === 'select' && selectedBehavior.kind === 'camera' && answerValue) {
+      return `${question.id}-detail-camera-button`
+    }
+
+    if (question.type === 'camera') {
+      return `${question.id}-camera-button`
+    }
+
+    if (question.type === 'location' && answers[question.id] === LOCATION_OTHER_VALUE) {
+      return `${question.id}-other`
+    }
+
+    return question.id
+  }
+
+  function focusValidationTarget(targetId) {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId)
+      if (!target) {
+        return
+      }
+
+      const scrollTarget =
+        target.closest('.form-question-block') || target.closest('.self-declaration-box') || target
+
+      scrollTarget.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+
+      window.setTimeout(() => {
+        if (typeof target.focus === 'function') {
+          target.focus({ preventScroll: true })
+        }
+      }, 200)
+    })
+  }
+
+  function isQuestionMissingRequiredAnswer(question) {
+    const answerValue = String(answers[question.id] || '').trim()
+    const selectedBehavior = getSelectOptionBehavior(question, answerValue)
+
+    if (question.type === 'select' && selectedBehavior.kind === 'input' && answerValue) {
+      return !String(selectDetailAnswers[question.id] || '').trim()
+    }
+
+    if (question.type === 'select' && selectedBehavior.kind === 'camera' && answerValue) {
+      return !selectDetailFiles[question.id] && !isPersistedImageValue(selectDetailAnswers[question.id])
+    }
+
+    if (!question.required) {
+      return false
+    }
+
+    if (question.type === 'camera') {
+      return !cameraFiles[question.id] && !isPersistedImageValue(answerValue)
+    }
+
+    if (question.type === 'location') {
+      return answers[question.id] === LOCATION_OTHER_VALUE
+        ? !String(locationOtherAnswers[question.id] || '').trim()
+        : !answerValue
+    }
+
+    return !answerValue
+  }
+
   async function onSubmit(event) {
     event.preventDefault()
+    setSubmitErrorQuestionId('')
+    setSubmitErrorTargetId('')
     setSubmitState({ submitting: false, message: '', error: '' })
 
     if (formData.enableSelfDeclaration && !selfDeclarationAccepted) {
+      setSubmitErrorQuestionId('')
+      setSubmitErrorTargetId('self-declaration-checkbox')
       setSubmitState({
         submitting: false,
         message: '',
@@ -3134,40 +3323,16 @@ function FormPage() {
             ? 'You must confirm the self-declaration.'
             : 'Du må bekrefte egenerklæringen.',
       })
+      focusValidationTarget('self-declaration-checkbox')
       return
     }
 
-    const missingRequired = visibleInputQuestions.find((question) => {
-      const answerValue = String(answers[question.id] || '').trim()
-      const selectedBehavior = getSelectOptionBehavior(question, answerValue)
-
-      if (question.type === 'select' && selectedBehavior.kind === 'input' && answerValue) {
-        return !String(selectDetailAnswers[question.id] || '').trim()
-      }
-
-      if (question.type === 'select' && selectedBehavior.kind === 'camera' && answerValue) {
-        return !selectDetailFiles[question.id] &&
-          !isPersistedImageValue(selectDetailAnswers[question.id])
-      }
-
-      if (!question.required) {
-        return false
-      }
-
-      if (question.type === 'camera') {
-        return !cameraFiles[question.id] && !isPersistedImageValue(answerValue)
-      }
-
-      if (question.type === 'location') {
-        return answers[question.id] === LOCATION_OTHER_VALUE
-          ? !String(locationOtherAnswers[question.id] || '').trim()
-          : !answerValue
-      }
-
-      return !answerValue
-    })
+    const missingRequired = visibleInputQuestions.find(isQuestionMissingRequiredAnswer)
 
     if (missingRequired) {
+      const targetId = getQuestionValidationTargetId(missingRequired)
+      setSubmitErrorQuestionId(missingRequired.id)
+      setSubmitErrorTargetId(targetId)
       setSubmitState({
         submitting: false,
         message: '',
@@ -3176,6 +3341,7 @@ function FormPage() {
             ? `Missing answer: ${translateText(missingRequired.label)}`
             : `Manglende svar: ${missingRequired.label}`,
       })
+      focusValidationTarget(targetId)
       return
     }
 
@@ -3193,6 +3359,8 @@ function FormPage() {
     })
 
     if (invalidPhoneQuestion) {
+      setSubmitErrorQuestionId(invalidPhoneQuestion.id)
+      setSubmitErrorTargetId(invalidPhoneQuestion.id)
       setSubmitState({
         submitting: false,
         message: '',
@@ -3201,6 +3369,7 @@ function FormPage() {
             ? `${translateText(invalidPhoneQuestion.label)}: ${publicCopy.phoneMustBeEightDigits}`
             : `${invalidPhoneQuestion.label}: ${publicCopy.phoneMustBeEightDigits}`,
       })
+      focusValidationTarget(invalidPhoneQuestion.id)
       return
     }
 
@@ -3225,6 +3394,14 @@ function FormPage() {
     }
 
     const receiptWindow = window.open('', '_blank')
+    renderPendingReceiptWindow(receiptWindow, {
+      lang: displayLanguage,
+      title: publicCopy.loadingReceipt,
+      headline: publicCopy.preparingReceipt,
+      hint: publicCopy.preparingReceiptHint,
+    })
+    setSubmitErrorQuestionId('')
+    setSubmitErrorTargetId('')
     setSubmitState({ submitting: true, message: '', error: '' })
 
     try {
@@ -3434,7 +3611,7 @@ function FormPage() {
         if (isSectionQuestion(question)) {
           return accumulator
         }
-        accumulator[question.id] = question.type === 'date' ? getTodayInputValue() : ''
+        accumulator[question.id] = ''
         return accumulator
       }, {})
 
@@ -5069,6 +5246,7 @@ function FormPage() {
               ) : null}
               <button
                 type="button"
+                id={`${question.id}-detail-camera-button`}
                 className="ghost camera-upload-button"
                 onClick={() => document.getElementById(detailFileInputId)?.click()}
               >
@@ -5175,6 +5353,7 @@ function FormPage() {
         <div className="camera-upload-control">
           <button
             type="button"
+            id={`${question.id}-camera-button`}
             className="ghost camera-upload-button"
             onClick={() => document.getElementById(fileInputId)?.click()}
           >
@@ -6796,6 +6975,8 @@ function FormPage() {
                           htmlFor={question.id}
                           className={`field-block form-question-block ${stripeClass} ${
                             isQuestionAnswered(question) ? 'is-answered' : ''
+                          } ${question.required && !isQuestionAnswered(question) ? 'is-required-unanswered' : ''} ${
+                            submitErrorQuestionId === question.id ? 'has-error' : ''
                           }`}
                         >
                           {renderQuestionLead(question)}
@@ -6809,6 +6990,8 @@ function FormPage() {
                   <div
                     className={`self-declaration-box ${
                       selfDeclarationAccepted ? 'is-answered' : ''
+                    } ${!selfDeclarationAccepted ? 'is-required-unanswered' : ''} ${
+                      submitErrorTargetId === 'self-declaration-checkbox' ? 'has-error' : ''
                     }`}
                   >
                     <p className="self-declaration-text">
@@ -6829,7 +7012,20 @@ function FormPage() {
                   </div>
                 ) : null}
 
-                {submitState.error ? <p className="forms-error">{submitState.error}</p> : null}
+                {submitState.error ? (
+                  <div className="forms-error-banner">
+                    <p className="forms-error">{submitState.error}</p>
+                    {submitErrorTargetId ? (
+                      <button
+                        type="button"
+                        className="ghost forms-error-jump"
+                        onClick={() => focusValidationTarget(submitErrorTargetId)}
+                      >
+                        {publicCopy.goToQuestion}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <button
                   type="submit"

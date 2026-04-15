@@ -194,6 +194,17 @@
   background: rgba(220, 242, 226, 0.98);
 }
 
+.public-form-page .form-question-block.is-required-unanswered,
+.public-form-page .self-declaration-box.is-required-unanswered {
+  border: 2px solid #e48a2a;
+}
+
+.public-form-page .form-question-block.has-error,
+.public-form-page .self-declaration-box.has-error {
+  border: 2px solid rgba(141, 31, 8, 0.56);
+  box-shadow: 0 0 0 4px rgba(141, 31, 8, 0.08);
+}
+
 .public-form-page .form-section-block {
   padding: 12px 0 0;
 }
@@ -617,6 +628,19 @@
 .forms-error {
   color: #8d1f08;
   font-weight: 600;
+}
+
+.forms-error-banner {
+  display: grid;
+  gap: 8px;
+}
+
+.forms-error-banner .forms-error {
+  margin: 0;
+}
+
+.forms-error-jump {
+  justify-self: start;
 }
 
 .forms-success {
