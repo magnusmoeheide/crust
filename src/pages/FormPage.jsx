@@ -1069,6 +1069,10 @@ function isDirectImageUrl(value) {
   )
 }
 
+function isPersistedImageValue(value) {
+  return isStorageImagePath(value) || isDirectImageUrl(value)
+}
+
 function getPathFileName(value) {
   const normalizedValue = String(value || '').trim()
   if (!normalizedValue) {
@@ -2349,12 +2353,14 @@ function FormPage() {
         return accumulator
       }
       const storedValue = draft.answers?.[question.id]
-      accumulator[question.id] =
+      const normalizedValue =
         typeof storedValue !== 'undefined'
           ? String(storedValue)
           : question.type === 'date'
             ? getTodayInputValue()
             : ''
+      accumulator[question.id] =
+        question.type === 'camera' && !isPersistedImageValue(normalizedValue) ? '' : normalizedValue
       return accumulator
     }, {})
 
@@ -2375,7 +2381,13 @@ function FormPage() {
       }
       const storedValue = draft.selectDetailAnswers?.[question.id]
       if (typeof storedValue !== 'undefined') {
-        accumulator[question.id] = String(storedValue)
+        const normalizedValue = String(storedValue)
+        const selectedValue = String(draft.answers?.[question.id] || '').trim()
+        const selectedBehavior = getSelectOptionBehavior(question, selectedValue)
+        accumulator[question.id] =
+          selectedBehavior.kind === 'camera' && !isPersistedImageValue(normalizedValue)
+            ? ''
+            : normalizedValue
       }
       return accumulator
     }, {})
@@ -2440,12 +2452,14 @@ function FormPage() {
       if (isSectionQuestion(question)) {
         return accumulator
       }
-      accumulator[question.id] =
+      const answerValue =
         typeof answers[question.id] !== 'undefined'
           ? String(answers[question.id] || '')
           : question.type === 'date'
             ? getTodayInputValue()
             : ''
+      accumulator[question.id] =
+        question.type === 'camera' && !isPersistedImageValue(answerValue) ? '' : answerValue
       return accumulator
     }, {})
 
@@ -2462,7 +2476,10 @@ function FormPage() {
         question.type === 'select' &&
         typeof selectDetailAnswers[question.id] !== 'undefined'
       ) {
-        accumulator[question.id] = String(selectDetailAnswers[question.id] || '')
+        const detailValue = String(selectDetailAnswers[question.id] || '')
+        const selectedBehavior = getSelectOptionBehavior(question, answers[question.id])
+        accumulator[question.id] =
+          selectedBehavior.kind === 'camera' && !isPersistedImageValue(detailValue) ? '' : detailValue
       }
       return accumulator
     }, {})
@@ -3129,11 +3146,8 @@ function FormPage() {
       }
 
       if (question.type === 'select' && selectedBehavior.kind === 'camera' && answerValue) {
-        return (
-          !selectDetailFiles[question.id] &&
-          !String(selectDetailAnswers[question.id] || '').trim() &&
-          !String(selectDetailPreviews[question.id] || '').trim()
-        )
+        return !selectDetailFiles[question.id] &&
+          !isPersistedImageValue(selectDetailAnswers[question.id])
       }
 
       if (!question.required) {
@@ -3141,7 +3155,7 @@ function FormPage() {
       }
 
       if (question.type === 'camera') {
-        return !cameraFiles[question.id] && !answerValue
+        return !cameraFiles[question.id] && !isPersistedImageValue(answerValue)
       }
 
       if (question.type === 'location') {
@@ -3231,6 +3245,10 @@ function FormPage() {
         submissionAnswers[question.id] =
           typeof answerValue === 'string' ? answerValue.trim() : answerValue || ''
 
+        if (question.type === 'camera' && !isPersistedImageValue(submissionAnswers[question.id])) {
+          submissionAnswers[question.id] = ''
+        }
+
         if (question.type === 'location') {
           submissionAnswers[question.id] =
             answers[question.id] === LOCATION_OTHER_VALUE
@@ -3257,6 +3275,8 @@ function FormPage() {
               const path = `forms/images/${activeFormSlug}/${submissionRef.id}-${question.id}-detail-${fileName}`
               imagePaths.push(path)
               submissionAnswers[getSelectDetailAnswerKey(question.id)] = path
+            } else if (isPersistedImageValue(detailValue)) {
+              submissionAnswers[getSelectDetailAnswerKey(question.id)] = detailValue
             }
           }
         }
@@ -3402,8 +3422,9 @@ function FormPage() {
       )
 
       if (receiptTokenValue) {
+        const receiptUrl = `${window.location.origin}/skjema/${activeFormSlug}/kvittering/${receiptTokenValue}`
         receiptWindow?.location.replace(
-          `http://crust.no/skjema/stengeskjema/kvittering/${receiptTokenValue}`,
+          receiptUrl,
         )
       } else {
         receiptWindow?.close()
