@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import {
   collection,
@@ -71,6 +71,8 @@ const PUBLIC_FORM_COPY = {
     enterLocation: 'Skriv inn lokasjon',
     takePhoto: 'Ta bilde',
     uploadNewPhoto: 'Last opp nytt bilde',
+    uploadingPhoto: 'Laster opp bilde...',
+    waitForPhotoUpload: 'Vent til bildeopplastingen er ferdig før du sender inn.',
     describeMore: 'Beskriv nærmere',
     fullName: 'Fullt navn',
     phoneNumber: 'Telefonnummer',
@@ -119,6 +121,8 @@ const PUBLIC_FORM_COPY = {
     enterLocation: 'Enter location',
     takePhoto: 'Take photo',
     uploadNewPhoto: 'Upload a new photo',
+    uploadingPhoto: 'Uploading image...',
+    waitForPhotoUpload: 'Wait for the image upload to finish before submitting.',
     describeMore: 'Describe in more detail',
     fullName: 'Full name',
     phoneNumber: 'Phone number',
@@ -254,6 +258,12 @@ function sanitizeFileName(name) {
     .toLowerCase()
     .replace(/[^a-z0-9.\-_]+/g, '-')
     .replace(/-+/g, '-')
+}
+
+function createTemporaryImageUploadPath(formSlug, questionId, fileName, options = {}) {
+  const detailSuffix = options.detail ? '-detail' : ''
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return `forms/images/${formSlug}/${questionId}${detailSuffix}-${uniqueId}-${sanitizeFileName(fileName)}`
 }
 
 function normalizeNorwegianPhoneNumber(value) {
@@ -1968,6 +1978,24 @@ function getSubmitErrorMessage(error) {
   return code ? `Noe gikk galt ved innsending (${code}). Prøv igjen.` : 'Noe gikk galt ved innsending. Prøv igjen.'
 }
 
+function getImmediateImageUploadErrorMessage(error) {
+  const code = error?.code || ''
+
+  if (code === 'storage/unauthorized') {
+    return 'Kunne ikke laste opp bilde. Mangler tilgang i Firebase Storage-regler.'
+  }
+
+  if (code === 'storage/canceled') {
+    return 'Bildeopplastingen ble avbrutt.'
+  }
+
+  if (code === 'storage/unknown') {
+    return 'Ukjent Storage-feil ved opplasting av bilde.'
+  }
+
+  return code ? `Kunne ikke laste opp bilde (${code}). Prøv igjen.` : 'Kunne ikke laste opp bilde. Prøv igjen.'
+}
+
 function getRemarkSaveErrorMessage(error) {
   const code = error?.code || ''
 
@@ -2056,6 +2084,8 @@ function FormPage() {
   const [cameraFiles, setCameraFiles] = useState({})
   const [cameraPreviews, setCameraPreviews] = useState({})
   const [cameraCapturedAt, setCameraCapturedAt] = useState({})
+  const [cameraUploadState, setCameraUploadState] = useState({})
+  const [selectDetailUploadState, setSelectDetailUploadState] = useState({})
   const [formInstanceKey, setFormInstanceKey] = useState(0)
   const [loadingForm, setLoadingForm] = useState(true)
   const [availableLocations, setAvailableLocations] = useState([])
@@ -2150,10 +2180,21 @@ function FormPage() {
   const [deliveryGroupByProductPerCity, setDeliveryGroupByProductPerCity] = useState(false)
   const [editorLocationSettings, setEditorLocationSettings] = useState({})
   const [hydratedEditReceiptToken, setHydratedEditReceiptToken] = useState('')
+  const cameraUploadRequestIdsRef = useRef({})
+  const selectDetailUploadRequestIdsRef = useRef({})
 
   const { user, isAdmin, loading, error } = useAdminSession()
   const shouldTranslateToEnglish = displayLanguage === 'en' || isReviewView
   const publicCopy = shouldTranslateToEnglish ? PUBLIC_FORM_COPY.en : PUBLIC_FORM_COPY.no
+  const shouldUploadStengeskjemaImagesImmediately =
+    activeFormSlug === STENGESKJEMA_ID && isStandalonePublicForm
+  const hasPendingImageUploads = useMemo(
+    () =>
+      [...Object.values(cameraUploadState), ...Object.values(selectDetailUploadState)].some(
+        (state) => Boolean(state?.uploading),
+      ),
+    [cameraUploadState, selectDetailUploadState],
+  )
 
   function translateText(value) {
     const text = String(value || '')
@@ -2499,9 +2540,11 @@ function FormPage() {
       setSelectDetailFiles({})
       setSelectDetailPreviews(nextSelectDetailPreviews)
       setSelectDetailCapturedAt(nextSelectDetailCapturedAt)
+      setSelectDetailUploadState({})
       setCameraFiles({})
       setCameraPreviews(nextCameraPreviews)
       setCameraCapturedAt(nextCameraCapturedAt)
+      setCameraUploadState({})
       setSelfDeclarationAccepted(Boolean(receiptAnswers[SELF_DECLARATION_ACCEPTED_KEY]))
       setHydratedEditReceiptToken(editReceiptToken)
       setDraftReady(true)
@@ -2519,7 +2562,7 @@ function FormPage() {
           ? String(storedValue)
           : ''
       accumulator[question.id] =
-        question.type === 'camera' && !isPersistedImageValue(normalizedValue) ? '' : normalizedValue
+        question.type === 'camera' && !isStorageImagePath(normalizedValue) ? '' : normalizedValue
       return accumulator
     }, {})
 
@@ -2544,7 +2587,7 @@ function FormPage() {
         const selectedValue = String(draft.answers?.[question.id] || '').trim()
         const selectedBehavior = getSelectOptionBehavior(question, selectedValue)
         accumulator[question.id] =
-          selectedBehavior.kind === 'camera' && !isPersistedImageValue(normalizedValue)
+          selectedBehavior.kind === 'camera' && !isStorageImagePath(normalizedValue)
             ? ''
             : normalizedValue
       }
@@ -2576,8 +2619,14 @@ function FormPage() {
     setAnswers(nextAnswers)
     setLocationOtherAnswers(nextLocationOtherAnswers)
     setSelectDetailAnswers(nextSelectDetailAnswers)
+    setSelectDetailFiles({})
+    setSelectDetailPreviews({})
     setSelectDetailCapturedAt(nextSelectDetailCapturedAt)
+    setSelectDetailUploadState({})
+    setCameraFiles({})
+    setCameraPreviews({})
     setCameraCapturedAt(nextCameraCapturedAt)
+    setCameraUploadState({})
     setSelfDeclarationAccepted(
       Boolean(formData.enableSelfDeclaration) && Boolean(draft.selfDeclarationAccepted),
     )
@@ -2602,6 +2651,91 @@ function FormPage() {
       !draftReady ||
       isSubmissionEditMode ||
       isAdminShellView ||
+      isReceiptPage ||
+      !shouldUploadStengeskjemaImagesImmediately
+    ) {
+      return
+    }
+
+    const cameraEntries = formData.questions
+      .filter((question) => !isSectionQuestion(question) && question.type === 'camera')
+      .map((question) => ({
+        questionId: question.id,
+        path: String(answers[question.id] || '').trim(),
+      }))
+      .filter((entry) => isStorageImagePath(entry.path))
+
+    const selectDetailEntries = formData.questions
+      .filter((question) => !isSectionQuestion(question) && question.type === 'select')
+      .map((question) => ({
+        questionId: question.id,
+        path: String(selectDetailAnswers[question.id] || '').trim(),
+      }))
+      .filter((entry) => isStorageImagePath(entry.path))
+
+    const uniquePaths = Array.from(
+      new Set([...cameraEntries, ...selectDetailEntries].map((entry) => entry.path)),
+    )
+
+    if (uniquePaths.length === 0) {
+      return
+    }
+
+    let cancelled = false
+
+    Promise.all(
+      uniquePaths.map(async (path) => {
+        try {
+          const url = await getDownloadURL(ref(storage, path))
+          return [path, url]
+        } catch {
+          return [path, '']
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) {
+        return
+      }
+
+      const imageUrlMap = Object.fromEntries(pairs.filter(([, url]) => Boolean(url)))
+
+      setCameraPreviews(
+        Object.fromEntries(
+          cameraEntries
+            .map((entry) => [entry.questionId, imageUrlMap[entry.path] || ''])
+            .filter(([, url]) => Boolean(url)),
+        ),
+      )
+      setSelectDetailPreviews(
+        Object.fromEntries(
+          selectDetailEntries
+            .map((entry) => [entry.questionId, imageUrlMap[entry.path] || ''])
+            .filter(([, url]) => Boolean(url)),
+        ),
+      )
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    answers,
+    draftReady,
+    formData.questions,
+    isAdminShellView,
+    isReceiptPage,
+    isSubmissionEditMode,
+    loadingForm,
+    selectDetailAnswers,
+    shouldUploadStengeskjemaImagesImmediately,
+  ])
+
+  useEffect(() => {
+    if (
+      loadingForm ||
+      !draftReady ||
+      isSubmissionEditMode ||
+      isAdminShellView ||
       isReceiptPage
     ) {
       return
@@ -2616,7 +2750,7 @@ function FormPage() {
           ? String(answers[question.id] || '')
           : ''
       accumulator[question.id] =
-        question.type === 'camera' && !isPersistedImageValue(answerValue) ? '' : answerValue
+        question.type === 'camera' && !isStorageImagePath(answerValue) ? '' : answerValue
       return accumulator
     }, {})
 
@@ -2636,7 +2770,7 @@ function FormPage() {
         const detailValue = String(selectDetailAnswers[question.id] || '')
         const selectedBehavior = getSelectOptionBehavior(question, answers[question.id])
         accumulator[question.id] =
-          selectedBehavior.kind === 'camera' && !isPersistedImageValue(detailValue) ? '' : detailValue
+          selectedBehavior.kind === 'camera' && !isStorageImagePath(detailValue) ? '' : detailValue
       }
       return accumulator
     }, {})
@@ -3107,9 +3241,9 @@ function FormPage() {
   }
 
   async function onCameraFileChange(questionId, file) {
-    onAnswerChange(questionId, file ? file.name : '')
-
     if (!file) {
+      cameraUploadRequestIdsRef.current[questionId] = `${Date.now()}-cleared`
+      onAnswerChange(questionId, '')
       setCameraFiles((previous) => ({
         ...previous,
         [questionId]: null,
@@ -3130,43 +3264,7 @@ function FormPage() {
         delete next[questionId]
         return next
       })
-      return
-    }
-
-    const capturedAtValue =
-      isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
-    const nextFile = await compressUploadedImage(file)
-
-    setCameraFiles((previous) => ({
-      ...previous,
-      [questionId]: nextFile,
-    }))
-    setCameraCapturedAt((previous) => {
-      if (typeof previous[questionId] === 'undefined') {
-        return previous
-      }
-      const next = { ...previous }
-      delete next[questionId]
-      return next
-    })
-
-    try {
-      const previewUrl = await readFileAsDataUrl(nextFile)
-      onAnswerChange(questionId, nextFile.name)
-      setCameraPreviews((previous) => ({
-        ...previous,
-        [questionId]: previewUrl,
-      }))
-      setCameraCapturedAt((previous) =>
-        capturedAtValue
-          ? {
-              ...previous,
-              [questionId]: capturedAtValue,
-            }
-          : previous,
-      )
-    } catch {
-      setCameraPreviews((previous) => {
+      setCameraUploadState((previous) => {
         if (typeof previous[questionId] === 'undefined') {
           return previous
         }
@@ -3174,11 +3272,143 @@ function FormPage() {
         delete next[questionId]
         return next
       })
+      return
+    }
+
+    if (!shouldUploadStengeskjemaImagesImmediately) {
+      onAnswerChange(questionId, file.name)
+      setCameraUploadState((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+
+      const capturedAtValue =
+        isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+      const nextFile = await compressUploadedImage(file)
+
+      setCameraFiles((previous) => ({
+        ...previous,
+        [questionId]: nextFile,
+      }))
+      setCameraCapturedAt((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+
+      try {
+        const previewUrl = await readFileAsDataUrl(nextFile)
+        onAnswerChange(questionId, nextFile.name)
+        setCameraPreviews((previous) => ({
+          ...previous,
+          [questionId]: previewUrl,
+        }))
+        setCameraCapturedAt((previous) =>
+          capturedAtValue
+            ? {
+                ...previous,
+                [questionId]: capturedAtValue,
+              }
+            : previous,
+        )
+      } catch {
+        setCameraPreviews((previous) => {
+          if (typeof previous[questionId] === 'undefined') {
+            return previous
+          }
+          const next = { ...previous }
+          delete next[questionId]
+          return next
+        })
+      }
+      return
+    }
+
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    cameraUploadRequestIdsRef.current[questionId] = requestId
+    setCameraUploadState((previous) => ({
+      ...previous,
+      [questionId]: { uploading: true, error: '' },
+    }))
+
+    const capturedAtValue =
+      isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+
+    try {
+      const nextFile = await compressUploadedImage(file)
+      setCameraFiles((previous) => ({
+        ...previous,
+        [questionId]: nextFile,
+      }))
+      const path = createTemporaryImageUploadPath(activeFormSlug, questionId, nextFile.name)
+      await uploadBytes(ref(storage, path), nextFile, {
+        contentType: nextFile.type,
+      })
+      const previewUrl = await getDownloadURL(ref(storage, path))
+
+      if (cameraUploadRequestIdsRef.current[questionId] !== requestId) {
+        return
+      }
+
+      onAnswerChange(questionId, path)
+      setCameraPreviews((previous) => ({
+        ...previous,
+        [questionId]: previewUrl,
+      }))
+      setCameraCapturedAt((previous) => {
+        const next = { ...previous }
+        if (capturedAtValue) {
+          next[questionId] = capturedAtValue
+        } else {
+          delete next[questionId]
+        }
+        return next
+      })
+      setCameraFiles((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+      setCameraUploadState((previous) => ({
+        ...previous,
+        [questionId]: { uploading: false, error: '' },
+      }))
+    } catch (uploadError) {
+      if (cameraUploadRequestIdsRef.current[questionId] !== requestId) {
+        return
+      }
+
+      setCameraFiles((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+      setCameraUploadState((previous) => ({
+        ...previous,
+        [questionId]: {
+          uploading: false,
+          error: getImmediateImageUploadErrorMessage(uploadError),
+        },
+      }))
     }
   }
 
   async function onSelectDetailCameraFileChange(questionId, file) {
     if (!file) {
+      selectDetailUploadRequestIdsRef.current[questionId] = `${Date.now()}-cleared`
       setSelectDetailFiles((previous) => ({
         ...previous,
         [questionId]: null,
@@ -3199,42 +3429,7 @@ function FormPage() {
         delete next[questionId]
         return next
       })
-      return
-    }
-
-    const capturedAtValue =
-      isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
-    const nextFile = await compressUploadedImage(file)
-
-    setSelectDetailFiles((previous) => ({
-      ...previous,
-      [questionId]: nextFile,
-    }))
-    setSelectDetailCapturedAt((previous) => {
-      if (typeof previous[questionId] === 'undefined') {
-        return previous
-      }
-      const next = { ...previous }
-      delete next[questionId]
-      return next
-    })
-
-    try {
-      const previewUrl = await readFileAsDataUrl(nextFile)
-      setSelectDetailPreviews((previous) => ({
-        ...previous,
-        [questionId]: previewUrl,
-      }))
-      setSelectDetailCapturedAt((previous) =>
-        capturedAtValue
-          ? {
-              ...previous,
-              [questionId]: capturedAtValue,
-            }
-          : previous,
-      )
-    } catch {
-      setSelectDetailPreviews((previous) => {
+      setSelectDetailUploadState((previous) => {
         if (typeof previous[questionId] === 'undefined') {
           return previous
         }
@@ -3242,6 +3437,140 @@ function FormPage() {
         delete next[questionId]
         return next
       })
+      return
+    }
+
+    if (!shouldUploadStengeskjemaImagesImmediately) {
+      setSelectDetailUploadState((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+
+      const capturedAtValue =
+        isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+      const nextFile = await compressUploadedImage(file)
+
+      setSelectDetailFiles((previous) => ({
+        ...previous,
+        [questionId]: nextFile,
+      }))
+      setSelectDetailCapturedAt((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+
+      try {
+        const previewUrl = await readFileAsDataUrl(nextFile)
+        setSelectDetailPreviews((previous) => ({
+          ...previous,
+          [questionId]: previewUrl,
+        }))
+        setSelectDetailCapturedAt((previous) =>
+          capturedAtValue
+            ? {
+                ...previous,
+                [questionId]: capturedAtValue,
+              }
+            : previous,
+        )
+      } catch {
+        setSelectDetailPreviews((previous) => {
+          if (typeof previous[questionId] === 'undefined') {
+            return previous
+          }
+          const next = { ...previous }
+          delete next[questionId]
+          return next
+        })
+      }
+      return
+    }
+
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    selectDetailUploadRequestIdsRef.current[questionId] = requestId
+    setSelectDetailUploadState((previous) => ({
+      ...previous,
+      [questionId]: { uploading: true, error: '' },
+    }))
+
+    const capturedAtValue =
+      isAdmin && activeFormSlug === STENGESKJEMA_ID ? await readImageCapturedAtValue(file) : ''
+
+    try {
+      const nextFile = await compressUploadedImage(file)
+      setSelectDetailFiles((previous) => ({
+        ...previous,
+        [questionId]: nextFile,
+      }))
+      const path = createTemporaryImageUploadPath(activeFormSlug, questionId, nextFile.name, {
+        detail: true,
+      })
+      await uploadBytes(ref(storage, path), nextFile, {
+        contentType: nextFile.type,
+      })
+      const previewUrl = await getDownloadURL(ref(storage, path))
+
+      if (selectDetailUploadRequestIdsRef.current[questionId] !== requestId) {
+        return
+      }
+
+      setSelectDetailAnswers((previous) => ({
+        ...previous,
+        [questionId]: path,
+      }))
+      setSelectDetailPreviews((previous) => ({
+        ...previous,
+        [questionId]: previewUrl,
+      }))
+      setSelectDetailCapturedAt((previous) => {
+        const next = { ...previous }
+        if (capturedAtValue) {
+          next[questionId] = capturedAtValue
+        } else {
+          delete next[questionId]
+        }
+        return next
+      })
+      setSelectDetailFiles((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+      setSelectDetailUploadState((previous) => ({
+        ...previous,
+        [questionId]: { uploading: false, error: '' },
+      }))
+    } catch (uploadError) {
+      if (selectDetailUploadRequestIdsRef.current[questionId] !== requestId) {
+        return
+      }
+
+      setSelectDetailFiles((previous) => {
+        if (typeof previous[questionId] === 'undefined') {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[questionId]
+        return next
+      })
+      setSelectDetailUploadState((previous) => ({
+        ...previous,
+        [questionId]: {
+          uploading: false,
+          error: getImmediateImageUploadErrorMessage(uploadError),
+        },
+      }))
     }
   }
 
@@ -3250,6 +3579,9 @@ function FormPage() {
     if (!confirmed) {
       return
     }
+
+    cameraUploadRequestIdsRef.current = {}
+    selectDetailUploadRequestIdsRef.current = {}
 
     const clearedAnswers = formData.questions.reduce((accumulator, question) => {
       if (isSectionQuestion(question)) {
@@ -3265,10 +3597,12 @@ function FormPage() {
     setSelectDetailFiles({})
     setSelectDetailPreviews({})
     setSelectDetailCapturedAt({})
+    setSelectDetailUploadState({})
     setSelfDeclarationAccepted(false)
     setCameraFiles({})
     setCameraPreviews({})
     setCameraCapturedAt({})
+    setCameraUploadState({})
     setFormInstanceKey((previous) => previous + 1)
     clearFormDraft(activeFormSlug)
     setSubmitErrorQuestionId('')
@@ -3339,6 +3673,9 @@ function FormPage() {
     }
 
     if (question.type === 'select' && selectedBehavior.kind === 'camera' && answerValue) {
+      if (selectDetailUploadState[question.id]?.uploading) {
+        return true
+      }
       return !selectDetailFiles[question.id] && !isPersistedImageValue(selectDetailAnswers[question.id])
     }
 
@@ -3347,6 +3684,9 @@ function FormPage() {
     }
 
     if (question.type === 'camera') {
+      if (cameraUploadState[question.id]?.uploading) {
+        return true
+      }
       return !cameraFiles[question.id] && !isPersistedImageValue(answerValue)
     }
 
@@ -3364,6 +3704,15 @@ function FormPage() {
     setSubmitErrorQuestionId('')
     setSubmitErrorTargetId('')
     setSubmitState({ submitting: false, message: '', error: '' })
+
+    if (hasPendingImageUploads) {
+      setSubmitState({
+        submitting: false,
+        message: '',
+        error: publicCopy.waitForPhotoUpload,
+      })
+      return
+    }
 
     if (formData.enableSelfDeclaration && !selfDeclarationAccepted) {
       setSubmitErrorQuestionId('')
@@ -3669,16 +4018,20 @@ function FormPage() {
       }, {})
 
       clearFormDraft(activeFormSlug)
+      cameraUploadRequestIdsRef.current = {}
+      selectDetailUploadRequestIdsRef.current = {}
       setAnswers(clearedAnswers)
       setLocationOtherAnswers({})
       setSelectDetailAnswers({})
       setSelectDetailFiles({})
       setSelectDetailPreviews({})
       setSelectDetailCapturedAt({})
+      setSelectDetailUploadState({})
       setSelfDeclarationAccepted(false)
       setCameraFiles({})
       setCameraPreviews({})
       setCameraCapturedAt({})
+      setCameraUploadState({})
       setFormInstanceKey((previous) => previous + 1)
       setSubmitState({
         submitting: false,
@@ -5263,6 +5616,7 @@ function FormPage() {
         : publicCopy.describeMore
       const detailFile = selectDetailFiles[question.id] || null
       const detailPreview = selectDetailPreviews[question.id] || ''
+      const detailUpload = selectDetailUploadState[question.id] || { uploading: false, error: '' }
       const detailFileInputId = `${question.id}-detail-camera-input`
 
       return (
@@ -5300,6 +5654,14 @@ function FormPage() {
                   return next
                 })
                 setSelectDetailCapturedAt((previous) => {
+                  if (typeof previous[question.id] === 'undefined') {
+                    return previous
+                  }
+                  const next = { ...previous }
+                  delete next[question.id]
+                  return next
+                })
+                setSelectDetailUploadState((previous) => {
                   if (typeof previous[question.id] === 'undefined') {
                     return previous
                   }
@@ -5377,6 +5739,8 @@ function FormPage() {
                 </div>
               ) : null}
               {detailFile ? <small>Valgt: {detailFile.name}</small> : null}
+              {detailUpload.uploading ? <small className="question-help">{publicCopy.uploadingPhoto}</small> : null}
+              {detailUpload.error ? <small className="question-help forms-error">{detailUpload.error}</small> : null}
             </div>
           ) : null}
         </>
@@ -5452,6 +5816,7 @@ function FormPage() {
     if (question.type === 'camera') {
       const fileInputId = `${question.id}-camera-input`
       const cameraPreview = cameraPreviews[question.id] || ''
+      const cameraUpload = cameraUploadState[question.id] || { uploading: false, error: '' }
 
       return (
         <div className="camera-upload-control">
@@ -5486,6 +5851,8 @@ function FormPage() {
           {cameraFiles[question.id] ? (
             <small>Valgt: {cameraFiles[question.id].name}</small>
           ) : null}
+          {cameraUpload.uploading ? <small className="question-help">{publicCopy.uploadingPhoto}</small> : null}
+          {cameraUpload.error ? <small className="question-help forms-error">{cameraUpload.error}</small> : null}
         </div>
       )
     }
@@ -7273,7 +7640,7 @@ function FormPage() {
                 <button
                   type="submit"
                   className="cta"
-                  disabled={submitState.submitting || !isPublicFormReady}
+                  disabled={submitState.submitting || hasPendingImageUploads || !isPublicFormReady}
                 >
                   {submitState.submitting ? publicCopy.sendingForm : publicCopy.sendForm}
                 </button>
