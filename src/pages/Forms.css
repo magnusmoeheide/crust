@@ -2310,6 +2310,35 @@
   gap: 10px;
 }
 
+.remarks-image-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.remarks-image-list--draft {
+  margin-top: -4px;
+}
+
+.remarks-image-item {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.remarks-image-item a {
+  display: block;
+}
+
+.remarks-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(24, 44, 60, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .remarks-detail-card {
   display: grid;
   gap: 10px;

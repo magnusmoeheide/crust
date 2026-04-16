@@ -341,11 +341,40 @@ function normalizeManualRemarkEntry(entry) {
     return null
   }
 
+  const images = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(entry?.images) ? entry.images : []),
+        ...(Array.isArray(entry?.imagePaths) ? entry.imagePaths : []),
+        entry?.imagePath,
+        entry?.imageUrl,
+      ]
+        .map((value) => {
+          if (typeof value === 'string') {
+            return value.trim()
+          }
+
+          if (value && typeof value === 'object') {
+            if (typeof value.path === 'string') {
+              return value.path.trim()
+            }
+            if (typeof value.url === 'string') {
+              return value.url.trim()
+            }
+          }
+
+          return ''
+        })
+        .filter((value) => isPersistedImageValue(value)),
+    ),
+  )
+
   return {
     phone,
     name: String(entry?.name || '').trim(),
     category,
     comment: String(entry?.comment || '').trim(),
+    images,
     recordedAt: entry?.recordedAt || null,
     recordedBy: String(entry?.recordedBy || '').trim(),
   }
@@ -1167,7 +1196,7 @@ function getVisibleFormQuestions(questions = [], selectedLocationName = '') {
 }
 
 function isStorageImagePath(value) {
-  return typeof value === 'string' && value.startsWith('forms/images/')
+  return typeof value === 'string' && (value.startsWith('forms/images/') || value.startsWith('forms/remarks/'))
 }
 
 function isDirectImageUrl(value) {
@@ -1939,6 +1968,28 @@ function getSubmitErrorMessage(error) {
   return code ? `Noe gikk galt ved innsending (${code}). Prøv igjen.` : 'Noe gikk galt ved innsending. Prøv igjen.'
 }
 
+function getRemarkSaveErrorMessage(error) {
+  const code = error?.code || ''
+
+  if (code === 'permission-denied') {
+    return 'Kunne ikke lagre remark. Mangler tilgang i Firestore-regler.'
+  }
+
+  if (code === 'storage/unauthorized') {
+    return 'Kunne ikke laste opp remark-bilde. Mangler tilgang i Firebase Storage-regler.'
+  }
+
+  if (code === 'storage/canceled') {
+    return 'Bildeopplastingen ble avbrutt.'
+  }
+
+  if (code === 'storage/unknown') {
+    return 'Ukjent Storage-feil ved opplasting av remark-bilde.'
+  }
+
+  return code ? `Kunne ikke lagre remark (${code}).` : 'Kunne ikke lagre remark.'
+}
+
 function getLocationsLoadErrorMessage(error) {
   const code = error?.code || ''
 
@@ -2082,6 +2133,8 @@ function FormPage() {
   const [remarkDraftName, setRemarkDraftName] = useState('')
   const [remarkDraftCategory, setRemarkDraftCategory] = useState('')
   const [remarkDraftComment, setRemarkDraftComment] = useState('')
+  const [remarkDraftImages, setRemarkDraftImages] = useState([])
+  const [remarkImageUrls, setRemarkImageUrls] = useState({})
   const [remarkState, setRemarkState] = useState({
     saving: false,
     error: '',
@@ -4860,6 +4913,37 @@ function FormPage() {
     }))
   }
 
+  async function onRemarkImageFileChange(fileList) {
+    const nextFiles = Array.from(fileList || []).filter((file) => file instanceof File)
+
+    if (nextFiles.length === 0) {
+      return
+    }
+
+    const preparedImages = await Promise.all(
+      nextFiles.map(async (file, index) => {
+        const nextFile = await compressUploadedImage(file)
+        let previewUrl = ''
+
+        try {
+          previewUrl = await readFileAsDataUrl(nextFile)
+        } catch {}
+
+        return {
+          id: `${Date.now()}-${index}-${sanitizeFileName(nextFile.name)}`,
+          file: nextFile,
+          previewUrl,
+        }
+      }),
+    )
+
+    setRemarkDraftImages((previous) => [...previous, ...preparedImages])
+  }
+
+  function onRemoveRemarkDraftImage(imageId) {
+    setRemarkDraftImages((previous) => previous.filter((image) => image.id !== imageId))
+  }
+
   async function onSaveManualRemark(event) {
     event.preventDefault()
 
@@ -4898,22 +4982,45 @@ function FormPage() {
 
     const remarkRef = doc(collection(db, 'formRemarks'))
     const recordedAt = new Date()
+    const uploadStartedAt = Date.now()
     const nextRemark = {
       formSlug: activeFormSlug,
       phone: normalizedPhone,
       name,
       category,
       comment,
+      images: [],
       recordedAt,
       recordedBy: user?.email || 'admin',
     }
 
     try {
+      const uploadedRemarkImages = await Promise.all(
+        remarkDraftImages.map(async ({ file }, index) => {
+          const fileName = sanitizeFileName(file.name)
+          const path = `forms/remarks/${activeFormSlug}/${remarkRef.id}-${uploadStartedAt}-${index}-${fileName}`
+          await uploadBytes(ref(storage, path), file, {
+            contentType: file.type,
+          })
+          const downloadUrl = await getDownloadURL(ref(storage, path))
+
+          return {
+            path,
+            downloadUrl,
+          }
+        }),
+      )
+      nextRemark.images = uploadedRemarkImages.map((image) => image.path)
+
       await setDoc(remarkRef, {
         ...nextRemark,
         recordedAt: serverTimestamp(),
       })
 
+      setRemarkImageUrls((previous) => ({
+        ...previous,
+        ...Object.fromEntries(uploadedRemarkImages.map((image) => [image.path, image.downloadUrl])),
+      }))
       setManualRemarks((previous) =>
         [{ id: remarkRef.id, ...nextRemark }, ...previous].sort(
           (a, b) => getTimestampSeconds(b.recordedAt) - getTimestampSeconds(a.recordedAt),
@@ -4927,6 +5034,7 @@ function FormPage() {
       setRemarkDraftName(name)
       setRemarkDraftCategory('')
       setRemarkDraftComment('')
+      setRemarkDraftImages([])
       setRemarkState({
         saving: false,
         error: '',
@@ -4935,13 +5043,9 @@ function FormPage() {
         categoryError: '',
       })
     } catch (error) {
-      const code = error?.code ? ` (${error.code})` : ''
       setRemarkState({
         saving: false,
-        error:
-          error?.code === 'permission-denied'
-            ? `Kunne ikke lagre remark${code}. Mangler tilgang i Firestore-regler.`
-            : `Kunne ikke lagre remark${code}.`,
+        error: getRemarkSaveErrorMessage(error),
         message: '',
         categorySaving: false,
         categoryError: '',
@@ -5537,6 +5641,21 @@ function FormPage() {
     () => flaggedImagePaths.filter((path) => !(path in flaggedImageUrls)),
     [flaggedImagePaths, flaggedImageUrls],
   )
+  const remarkImagePaths = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          manualRemarks.flatMap((remark) =>
+            (Array.isArray(remark.images) ? remark.images : []).filter((value) => isStorageImagePath(value)),
+          ),
+        ),
+      ),
+    [manualRemarks],
+  )
+  const missingRemarkImagePaths = useMemo(
+    () => remarkImagePaths.filter((path) => !(path in remarkImageUrls)),
+    [remarkImagePaths, remarkImageUrls],
+  )
   const openFlaggedSubmissions = useMemo(
     () =>
       flaggedSubmissions.filter(
@@ -5615,6 +5734,7 @@ function FormPage() {
             Array.isArray(submission.flaggedAnswers) && submission.flaggedAnswers.length > 0
               ? 'Flagget innsending'
               : 'Innsending',
+          images: [],
           submissionId: submission.id,
           receiptToken: submission.receiptToken || '',
           flaggedAnswers: Array.isArray(submission.flaggedAnswers) ? submission.flaggedAnswers : [],
@@ -5631,6 +5751,7 @@ function FormPage() {
         location: '-',
         category: remark.category,
         comment: remark.comment,
+        images: Array.isArray(remark.images) ? remark.images : [],
         recordedAt: remark.recordedAt || null,
         recordedAtSeconds: getTimestampSeconds(remark.recordedAt),
         recordedBy: remark.recordedBy || '',
@@ -5981,6 +6102,58 @@ function FormPage() {
       cancelled = true
     }
   }, [flaggedSubmissions, missingFlaggedImagePaths])
+
+  useEffect(() => {
+    if (remarkImagePaths.length === 0) {
+      setRemarkImageUrls((previous) => {
+        if (Object.keys(previous).length === 0) {
+          return previous
+        }
+        return {}
+      })
+      return
+    }
+
+    if (missingRemarkImagePaths.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    Promise.all(
+      missingRemarkImagePaths.map(async (path) => {
+        try {
+          const url = await getDownloadURL(ref(storage, path))
+          return [path, url]
+        } catch {
+          return [path, '']
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) {
+        return
+      }
+
+      const nextEntries = Object.fromEntries(pairs)
+      setRemarkImageUrls((previous) => {
+        let hasChange = false
+        const next = { ...previous }
+
+        Object.entries(nextEntries).forEach(([path, url]) => {
+          if (next[path] !== url) {
+            next[path] = url
+            hasChange = true
+          }
+        })
+
+        return hasChange ? next : previous
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [missingRemarkImagePaths, remarkImagePaths])
+
   const visibleHistoryRows =
     historyShowAllLocations
       ? historyRows
@@ -6555,6 +6728,44 @@ function FormPage() {
               onChange={(event) => setRemarkDraftComment(event.target.value)}
             />
           </label>
+          <label className="field-block" htmlFor="remarks-images">
+            <span>Bilder</span>
+            <input
+              id="remarks-images"
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={async (event) => {
+                await onRemarkImageFileChange(event.target.files)
+                event.target.value = ''
+              }}
+            />
+            <small className="question-help">Du kan legge ved ett eller flere bilder.</small>
+          </label>
+          {remarkDraftImages.length > 0 ? (
+            <div className="remarks-image-list remarks-image-list--draft">
+              {remarkDraftImages.map((image, index) => (
+                <article key={image.id} className="remarks-image-item">
+                  {image.previewUrl ? (
+                    <img
+                      className="remarks-image"
+                      src={image.previewUrl}
+                      alt={`Valgt remark-bilde ${index + 1}`}
+                    />
+                  ) : (
+                    <p className="review-answer-value">{image.file.name}</p>
+                  )}
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => onRemoveRemarkDraftImage(image.id)}
+                  >
+                    Fjern
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : null}
           <div className="submission-table-actions flagged-action-buttons">
             <div className="flagged-category-popup-wrap">
               <button
@@ -6698,6 +6909,38 @@ function FormPage() {
                             <p className="flagged-answer-comment">
                               <strong>Kommentar:</strong> {remarkEntry.comment}
                             </p>
+                          ) : null}
+                          {Array.isArray(remarkEntry.images) && remarkEntry.images.length > 0 ? (
+                            <div className="remarks-image-list">
+                              {remarkEntry.images.map((imageValue, imageIndex) => {
+                                const hasStoragePath = isStorageImagePath(imageValue)
+                                const imageUrl = hasStoragePath
+                                  ? String(remarkImageUrls[imageValue] || '')
+                                  : String(imageValue || '')
+
+                                return (
+                                  <article
+                                    key={`${remarkEntry.id}-image-${imageValue}-${imageIndex}`}
+                                    className="remarks-image-item"
+                                  >
+                                    {imageUrl ? (
+                                      <a href={imageUrl} target="_blank" rel="noreferrer">
+                                        <img
+                                          className="remarks-image"
+                                          src={imageUrl}
+                                          alt={`${remarkEntry.category} bilde ${imageIndex + 1}`}
+                                          loading="lazy"
+                                        />
+                                      </a>
+                                    ) : hasStoragePath && typeof remarkImageUrls[imageValue] !== 'undefined' ? (
+                                      <p className="review-answer-value">Kunne ikke laste bilde.</p>
+                                    ) : (
+                                      <p className="review-answer-value">Laster bilde...</p>
+                                    )}
+                                  </article>
+                                )
+                              })}
+                            </div>
                           ) : null}
                           {remarkEntry.receiptToken ? (
                             <a
