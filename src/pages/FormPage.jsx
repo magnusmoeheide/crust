@@ -13,7 +13,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { db, storage } from '../firebase'
 import { STENGESKJEMA_ID, defaultStengeskjema } from '../forms/defaultForms'
 import { useAdminSession } from '../hooks/useAdminSession'
@@ -2018,6 +2018,16 @@ function getRemarkSaveErrorMessage(error) {
   return code ? `Kunne ikke lagre remark (${code}).` : 'Kunne ikke lagre remark.'
 }
 
+function getRemarkDeleteErrorMessage(error) {
+  const code = error?.code || ''
+
+  if (code === 'permission-denied') {
+    return 'Kunne ikke slette remark. Mangler tilgang i Firestore-regler.'
+  }
+
+  return code ? `Kunne ikke slette remark (${code}).` : 'Kunne ikke slette remark.'
+}
+
 function getLocationsLoadErrorMessage(error) {
   const code = error?.code || ''
 
@@ -2174,6 +2184,12 @@ function FormPage() {
   })
   const [remarkCategoryPopupOpen, setRemarkCategoryPopupOpen] = useState(false)
   const [newRemarkCategoryDraft, setNewRemarkCategoryDraft] = useState('')
+  const [remarkCategoryManagerOpen, setRemarkCategoryManagerOpen] = useState(false)
+  const [remarkCategoryPendingName, setRemarkCategoryPendingName] = useState('')
+  const [remarkCategoryPendingAction, setRemarkCategoryPendingAction] = useState('')
+  const [remarkCategoryModalCategory, setRemarkCategoryModalCategory] = useState('')
+  const [remarkCategoryRenameDraft, setRemarkCategoryRenameDraft] = useState('')
+  const [remarkDeleteState, setRemarkDeleteState] = useState({})
   const [expandedRemarkPhones, setExpandedRemarkPhones] = useState({})
   const [analysisActionState, setAnalysisActionState] = useState({})
   const [deliveryGroupByNeighborhood, setDeliveryGroupByNeighborhood] = useState(false)
@@ -5218,41 +5234,378 @@ function FormPage() {
 
   async function onAddRemarkCategory() {
     await onSaveWarningCategory(newRemarkCategoryDraft, {
-      onSaving: () =>
+      onSaving: () => {
+        setRemarkCategoryPendingName(String(newRemarkCategoryDraft || '').trim())
+        setRemarkCategoryPendingAction('create')
         setRemarkState((previous) => ({
           ...previous,
           saving: false,
           error: '',
+          message: '',
           categorySaving: true,
           categoryError: '',
-        })),
+        }))
+      },
       onSaved: (_mergedCategories, selectedCategory) => {
         setNewRemarkCategoryDraft('')
         setRemarkDraftCategory(selectedCategory)
         setRemarkCategoryPopupOpen(false)
+        setRemarkCategoryPendingName('')
+        setRemarkCategoryPendingAction('')
         setRemarkState((previous) => ({
           ...previous,
           saving: false,
           error: '',
+          message: 'Kategori lagret.',
           categorySaving: false,
           categoryError: '',
         }))
       },
-      onValidationError: (message) =>
+      onValidationError: (message) => {
+        setRemarkCategoryPendingName('')
+        setRemarkCategoryPendingAction('')
         setRemarkState((previous) => ({
           ...previous,
           saving: false,
+          message: '',
           categorySaving: false,
           categoryError: message,
-        })),
-      onSaveError: (message) =>
+        }))
+      },
+      onSaveError: (message) => {
+        setRemarkCategoryPendingName('')
+        setRemarkCategoryPendingAction('')
         setRemarkState((previous) => ({
           ...previous,
           saving: false,
+          message: '',
           categorySaving: false,
           categoryError: message,
-        })),
+        }))
+      },
     })
+  }
+
+  function openRemarkCategoryModal(category) {
+    const nextCategory = String(category || '').trim()
+    if (!nextCategory) {
+      return
+    }
+
+    setRemarkCategoryManagerOpen(true)
+    setRemarkCategoryModalCategory(nextCategory)
+    setRemarkCategoryRenameDraft(nextCategory)
+    setRemarkState((previous) => ({
+      ...previous,
+      categoryError: '',
+    }))
+  }
+
+  function openRemarkCategoryManager() {
+    setRemarkCategoryManagerOpen(true)
+    setRemarkCategoryModalCategory('')
+    setRemarkCategoryRenameDraft('')
+    setRemarkState((previous) => ({
+      ...previous,
+      categoryError: '',
+    }))
+  }
+
+  function closeRemarkCategoryModal() {
+    if (remarkState.categorySaving) {
+      return
+    }
+
+    setRemarkCategoryManagerOpen(false)
+    setRemarkCategoryModalCategory('')
+    setRemarkCategoryRenameDraft('')
+    setRemarkCategoryPendingName('')
+    setRemarkCategoryPendingAction('')
+    setRemarkState((previous) => ({
+      ...previous,
+      categoryError: '',
+    }))
+  }
+
+  async function onRenameWarningCategory() {
+    const previousCategory = String(remarkCategoryModalCategory || '').trim()
+    const nextCategory = String(remarkCategoryRenameDraft || '').trim()
+
+    if (!previousCategory) {
+      return
+    }
+
+    if (!nextCategory) {
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: '',
+        categorySaving: false,
+        categoryError: 'Skriv inn et kategorinavn før du lagrer.',
+      }))
+      return
+    }
+
+    const duplicateCategory = availableWarningCategories.find(
+      (value) =>
+        value.toLowerCase() === nextCategory.toLowerCase() &&
+        value.toLowerCase() !== previousCategory.toLowerCase(),
+    )
+    if (duplicateCategory) {
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: '',
+        categorySaving: false,
+        categoryError: `Kategorien "${duplicateCategory}" finnes allerede.`,
+      }))
+      return
+    }
+
+    const previousCategoryKey = previousCategory.toLowerCase()
+    const nextCategories = normalizeWarningCategories([
+      ...configuredWarningCategories.filter((value) => value.toLowerCase() !== previousCategoryKey),
+      nextCategory,
+    ])
+    const remarksToUpdate = manualRemarks.filter(
+      (remark) => String(remark.category || '').trim().toLowerCase() === previousCategoryKey,
+    )
+    const submissionsToUpdate = submissions.filter((submission) =>
+      getSubmissionWarnings(submission).some(
+        (warning) => String(warning.category || '').trim().toLowerCase() === previousCategoryKey,
+      ),
+    )
+
+    setRemarkCategoryPendingName(previousCategory)
+    setRemarkCategoryPendingAction('rename')
+    setRemarkState((previous) => ({
+      ...previous,
+      saving: false,
+      error: '',
+      message: '',
+      categorySaving: true,
+      categoryError: '',
+    }))
+
+    try {
+      await Promise.all([
+        setDoc(
+          doc(db, 'forms', formDocId || activeFormSlug),
+          {
+            slug: activeFormSlug,
+            warningCategories: nextCategories,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        ),
+        ...remarksToUpdate.map((remark) =>
+          updateDoc(doc(db, 'formRemarks', remark.id), {
+            category: nextCategory,
+          }),
+        ),
+        ...submissionsToUpdate.map((submission) => {
+          const nextWarnings = getSubmissionWarnings(submission).map((warning) => ({
+            ...warning,
+            category:
+              String(warning.category || '').trim().toLowerCase() === previousCategoryKey
+                ? nextCategory
+                : warning.category,
+          }))
+          const latestWarning = nextWarnings[nextWarnings.length - 1] || null
+
+          return updateDoc(doc(db, 'formSubmissions', submission.id), {
+            warnings: nextWarnings,
+            warningRegistered: nextWarnings.length > 0,
+            warningCategory: latestWarning ? latestWarning.category : '',
+            warningRecordedAt: latestWarning ? latestWarning.recordedAt : null,
+            warningRecordedBy: latestWarning ? latestWarning.recordedBy : '',
+          })
+        }),
+      ])
+
+      setFormData((previous) => ({
+        ...previous,
+        warningCategories: nextCategories,
+      }))
+      setManualRemarks((previous) =>
+        previous.map((remark) =>
+          String(remark.category || '').trim().toLowerCase() === previousCategoryKey
+            ? { ...remark, category: nextCategory }
+            : remark,
+        ),
+      )
+      setSubmissions((previous) =>
+        previous.map((submission) => {
+          const nextWarnings = getSubmissionWarnings(submission).map((warning) => ({
+            ...warning,
+            category:
+              String(warning.category || '').trim().toLowerCase() === previousCategoryKey
+                ? nextCategory
+                : warning.category,
+          }))
+
+          if (
+            nextWarnings.length === 0 ||
+            !nextWarnings.some(
+              (warning) => String(warning.category || '').trim().toLowerCase() === nextCategory.toLowerCase(),
+            )
+          ) {
+            return submission
+          }
+
+          const latestWarning = nextWarnings[nextWarnings.length - 1] || null
+          return {
+            ...submission,
+            warnings: nextWarnings,
+            warningRegistered: nextWarnings.length > 0,
+            warningCategory: latestWarning ? latestWarning.category : '',
+            warningRecordedAt: latestWarning ? latestWarning.recordedAt : null,
+            warningRecordedBy: latestWarning ? latestWarning.recordedBy : '',
+          }
+        }),
+      )
+      setFlaggedWarningDrafts((previous) =>
+        Object.fromEntries(
+          Object.entries(previous).map(([submissionId, drafts]) => [
+            submissionId,
+            (Array.isArray(drafts) ? drafts : []).map((draft) =>
+              String(draft?.category || '').trim().toLowerCase() === previousCategoryKey
+                ? { ...draft, category: nextCategory }
+                : draft,
+            ),
+          ]),
+        ),
+      )
+      setRemarkDraftCategory((previous) =>
+        String(previous || '').trim().toLowerCase() === previousCategoryKey ? nextCategory : previous,
+      )
+      setRemarkCategoryModalCategory('')
+      setRemarkCategoryRenameDraft('')
+      setRemarkCategoryPendingName('')
+      setRemarkCategoryPendingAction('')
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: 'Kategori oppdatert.',
+        categorySaving: false,
+        categoryError: '',
+      }))
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      setRemarkCategoryPendingName('')
+      setRemarkCategoryPendingAction('')
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: '',
+        categorySaving: false,
+        categoryError:
+          error?.code === 'permission-denied'
+            ? `Kunne ikke oppdatere kategorien${code}. Mangler tilgang i Firestore-regler.`
+            : `Kunne ikke oppdatere kategorien${code}.`,
+      }))
+    }
+  }
+
+  async function onDeleteWarningCategory(categoryToDelete) {
+    const category = String(categoryToDelete || '').trim()
+    if (!category) {
+      return
+    }
+
+    const usageCount = warningCategoryUsageCounts[category.toLowerCase()] || 0
+    if (usageCount > 0) {
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: '',
+        categorySaving: false,
+        categoryError: `Kan ikke slette kategorien "${category}" fordi den brukes i ${usageCount} ${usageCount === 1 ? 'remark eller advarsel' : 'remarks eller advarsler'}. Endre eller slett disse først.`,
+      }))
+      return
+    }
+
+    const existingCategory = configuredWarningCategories.find(
+      (value) => value.toLowerCase() === category.toLowerCase(),
+    )
+    if (!existingCategory) {
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: '',
+        categorySaving: false,
+        categoryError: `Fant ikke kategorien "${category}".`,
+      }))
+      return
+    }
+
+    const nextCategories = configuredWarningCategories.filter(
+      (value) => value.toLowerCase() !== existingCategory.toLowerCase(),
+    )
+
+    setRemarkCategoryPendingName(existingCategory)
+    setRemarkCategoryPendingAction('delete')
+    setRemarkState((previous) => ({
+      ...previous,
+      saving: false,
+      error: '',
+      message: '',
+      categorySaving: true,
+      categoryError: '',
+    }))
+
+    try {
+      await setDoc(
+        doc(db, 'forms', formDocId || activeFormSlug),
+        {
+          slug: activeFormSlug,
+          warningCategories: nextCategories,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+
+      setFormData((previous) => ({
+        ...previous,
+        warningCategories: nextCategories,
+      }))
+      setRemarkDraftCategory((previous) =>
+        String(previous || '').toLowerCase() === existingCategory.toLowerCase() ? '' : previous,
+      )
+      setRemarkCategoryModalCategory('')
+      setRemarkCategoryRenameDraft('')
+      setRemarkCategoryPendingName('')
+      setRemarkCategoryPendingAction('')
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: 'Kategori slettet.',
+        categorySaving: false,
+        categoryError: '',
+      }))
+    } catch (error) {
+      const code = error?.code ? ` (${error.code})` : ''
+      setRemarkCategoryPendingName('')
+      setRemarkCategoryPendingAction('')
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: '',
+        categorySaving: false,
+        categoryError:
+          error?.code === 'permission-denied'
+            ? `Kunne ikke slette kategorien${code}. Mangler tilgang i Firestore-regler.`
+            : `Kunne ikke slette kategorien${code}.`,
+      }))
+    }
   }
 
   function onToggleRemarkPhone(phone) {
@@ -5295,6 +5648,70 @@ function FormPage() {
 
   function onRemoveRemarkDraftImage(imageId) {
     setRemarkDraftImages((previous) => previous.filter((image) => image.id !== imageId))
+  }
+
+  async function onDeleteManualRemark(remark) {
+    const remarkId = String(remark?.id || '').trim()
+    if (!remarkId) {
+      return
+    }
+
+    const confirmed = window.confirm('Slette denne remarken permanent?')
+    if (!confirmed) {
+      return
+    }
+
+    setRemarkDeleteState((previous) => ({
+      ...previous,
+      [remarkId]: { deleting: true, error: '' },
+    }))
+
+    try {
+      await deleteDoc(doc(db, 'formRemarks', remarkId))
+
+      const imagePaths = (Array.isArray(remark?.images) ? remark.images : []).filter((value) =>
+        isStorageImagePath(value),
+      )
+      const cleanupResults = await Promise.allSettled(
+        imagePaths.map((path) => deleteObject(ref(storage, path))),
+      )
+      const cleanupFailed = cleanupResults.some(
+        (result) =>
+          result.status === 'rejected' && result.reason?.code !== 'storage/object-not-found',
+      )
+
+      setManualRemarks((previous) => previous.filter((entry) => entry.id !== remarkId))
+      setRemarkImageUrls((previous) => {
+        if (imagePaths.length === 0) {
+          return previous
+        }
+
+        const next = { ...previous }
+        imagePaths.forEach((path) => {
+          delete next[path]
+        })
+        return next
+      })
+      setRemarkDeleteState((previous) => ({
+        ...previous,
+        [remarkId]: { deleting: false, error: '' },
+      }))
+      setRemarkState((previous) => ({
+        ...previous,
+        saving: false,
+        error: '',
+        message: cleanupFailed
+          ? 'Remark slettet, men ett eller flere bilder kunne ikke fjernes fra Storage.'
+          : 'Remark slettet.',
+        categorySaving: false,
+        categoryError: '',
+      }))
+    } catch (error) {
+      setRemarkDeleteState((previous) => ({
+        ...previous,
+        [remarkId]: { deleting: false, error: getRemarkDeleteErrorMessage(error) },
+      }))
+    }
   }
 
   async function onSaveManualRemark(event) {
@@ -6037,16 +6454,39 @@ function FormPage() {
       ),
     [flaggedSubmissions],
   )
+  const configuredWarningCategories = useMemo(
+    () => normalizeWarningCategories(formData.warningCategories),
+    [formData.warningCategories],
+  )
+  const warningCategoryUsageCounts = useMemo(() => {
+    const counts = {}
+    const increment = (value) => {
+      const category = String(value || '').trim()
+      if (!category) {
+        return
+      }
+
+      const key = category.toLowerCase()
+      counts[key] = (counts[key] || 0) + 1
+    }
+
+    submissions.forEach((submission) => {
+      getSubmissionWarnings(submission).forEach((warning) => increment(warning.category))
+    })
+    manualRemarks.forEach((remark) => increment(remark.category))
+
+    return counts
+  }, [manualRemarks, submissions])
   const availableWarningCategories = useMemo(
     () =>
       normalizeWarningCategories([
-        ...(Array.isArray(formData.warningCategories) ? formData.warningCategories : []),
+        ...configuredWarningCategories,
         ...submissions.flatMap((submission) =>
           getSubmissionWarnings(submission).map((warning) => warning.category),
         ),
         ...manualRemarks.map((remark) => remark.category),
       ]),
-    [formData.warningCategories, manualRemarks, submissions],
+    [configuredWarningCategories, manualRemarks, submissions],
   )
   const warningSubmissions = useMemo(
     () => submissions.filter((submission) => getSubmissionWarnings(submission).length > 0),
@@ -7168,20 +7608,175 @@ function FormPage() {
                       onClick={onAddRemarkCategory}
                       disabled={remarkState.categorySaving}
                     >
-                      {remarkState.categorySaving ? 'Lagrer...' : 'Lagre kategori'}
+                      {remarkState.categorySaving &&
+                      remarkCategoryPendingAction === 'create' &&
+                      remarkCategoryPendingName === String(newRemarkCategoryDraft || '').trim()
+                        ? 'Lagrer...'
+                        : 'Lagre kategori'}
                     </button>
                   </div>
-                  {remarkState.categoryError ? <p className="forms-error">{remarkState.categoryError}</p> : null}
                 </div>
               ) : null}
             </div>
+            <button
+              type="button"
+              className="ghost"
+              onClick={openRemarkCategoryManager}
+              disabled={remarkState.categorySaving}
+            >
+              Endre kategorier
+            </button>
             <button type="submit" className="cta" disabled={remarkState.saving}>
               {remarkState.saving ? 'Lagrer...' : 'Lagre remark'}
             </button>
           </div>
+          {remarkState.categoryError && !remarkCategoryManagerOpen ? (
+            <p className="forms-error">{remarkState.categoryError}</p>
+          ) : null}
           {remarkState.error ? <p className="forms-error">{remarkState.error}</p> : null}
           {remarkState.message ? <p className="forms-success">{remarkState.message}</p> : null}
         </form>
+
+        {remarkCategoryManagerOpen ? (
+          <div
+            className="submission-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remark-category-modal-title"
+            onClick={closeRemarkCategoryModal}
+          >
+            <div
+              className="submission-modal forms-admin-modal remarks-category-modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="submission-modal-header">
+                <h4 id="remark-category-modal-title">Administrer kategori</h4>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={closeRemarkCategoryModal}
+                  disabled={remarkState.categorySaving}
+                >
+                  Lukk
+                </button>
+              </div>
+              <div className="submission-modal-content">
+                <div className="remarks-category-modal-content">
+                  {availableWarningCategories.length > 0 ? (
+                    <>
+                      <div className="remarks-category-admin-list">
+                        {availableWarningCategories.map((category) => {
+                          const usageCount = warningCategoryUsageCounts[category.toLowerCase()] || 0
+                          const isConfigured = configuredWarningCategories.some(
+                            (value) => value.toLowerCase() === category.toLowerCase(),
+                          )
+
+                          return (
+                            <div key={`remark-category-${category}`} className="remarks-category-admin-row">
+                              <span className="remarks-category-chip">{category}</span>
+                              <span className="review-answer-value">
+                                {usageCount > 0 ? `I bruk: ${usageCount}` : 'Ikke i bruk'}
+                              </span>
+                              <span className="review-answer-value">
+                                {isConfigured ? 'Valgbar kategori' : 'Kun i eksisterende data'}
+                              </span>
+                              <button
+                                type="button"
+                                className="ghost"
+                                onClick={() => openRemarkCategoryModal(category)}
+                                disabled={remarkState.categorySaving}
+                              >
+                                Administrer
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <small className="question-help">
+                        Du kan gi kategorier nytt navn her. Sletting er bare tilgjengelig for kategorier som ikke er i bruk.
+                      </small>
+                    </>
+                  ) : (
+                    <p className="review-answer-value">Ingen kategorier finnes ennå.</p>
+                  )}
+                  {remarkCategoryModalCategory ? (
+                    <>
+                      <p className="review-answer-value">
+                        <strong>Nåværende navn:</strong> {remarkCategoryModalCategory}
+                      </p>
+                      <p className="review-answer-value">
+                        <strong>Bruk:</strong>{' '}
+                        {warningCategoryUsageCounts[remarkCategoryModalCategory.toLowerCase()] || 0}
+                      </p>
+                      <label className="field-block" htmlFor="remark-category-rename">
+                        <span>Nytt navn</span>
+                        <input
+                          id="remark-category-rename"
+                          type="text"
+                          value={remarkCategoryRenameDraft}
+                          disabled={remarkState.categorySaving}
+                          onChange={(event) => setRemarkCategoryRenameDraft(event.target.value)}
+                        />
+                      </label>
+                      <div className="forms-admin-modal-actions">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            setRemarkCategoryModalCategory('')
+                            setRemarkCategoryRenameDraft('')
+                            setRemarkState((previous) => ({
+                              ...previous,
+                              categoryError: '',
+                            }))
+                          }}
+                          disabled={remarkState.categorySaving}
+                        >
+                          Lukk administrering
+                        </button>
+                        <button
+                          type="button"
+                          className="cta"
+                          onClick={onRenameWarningCategory}
+                          disabled={remarkState.categorySaving}
+                        >
+                          {remarkState.categorySaving &&
+                          remarkCategoryPendingAction === 'rename' &&
+                          remarkCategoryPendingName.toLowerCase() ===
+                            remarkCategoryModalCategory.toLowerCase()
+                            ? 'Lagrer...'
+                            : 'Lagre nytt navn'}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost danger-button"
+                          onClick={() => onDeleteWarningCategory(remarkCategoryModalCategory)}
+                          disabled={
+                            remarkState.categorySaving ||
+                            (warningCategoryUsageCounts[remarkCategoryModalCategory.toLowerCase()] || 0) > 0
+                          }
+                        >
+                          {remarkState.categorySaving &&
+                          remarkCategoryPendingAction === 'delete' &&
+                          remarkCategoryPendingName.toLowerCase() ===
+                            remarkCategoryModalCategory.toLowerCase()
+                            ? 'Sletter...'
+                            : 'Slett kategori'}
+                        </button>
+                      </div>
+                      {(warningCategoryUsageCounts[remarkCategoryModalCategory.toLowerCase()] || 0) > 0 ? (
+                        <p className="review-pending-note">
+                          Kategorien er i bruk og kan derfor ikke slettes før tilhørende remarks eller advarsler er endret.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {remarkState.categoryError ? <p className="forms-error">{remarkState.categoryError}</p> : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {loadingRemarks ? <p>Laster remarks...</p> : null}
         {!loadingRemarks && remarksOverview.totalWarnings === 0 ? (
@@ -7246,7 +7841,10 @@ function FormPage() {
                   </div>
                   {expandedRemarkPhones[entry.phone] ? (
                     <div className="remarks-detail-list">
-                      {entry.entries.map((remarkEntry, index) => (
+                      {entry.entries.map((remarkEntry, index) => {
+                        const deleteState = remarkDeleteState[remarkEntry.id] || {}
+
+                        return (
                         <article key={remarkEntry.id} className="remarks-detail-card">
                           <div className="remarks-detail-header">
                             <div className="remarks-detail-badges">
@@ -7276,6 +7874,21 @@ function FormPage() {
                             <p className="flagged-answer-comment">
                               <strong>Kommentar:</strong> {remarkEntry.comment}
                             </p>
+                          ) : null}
+                          {remarkEntry.sourceType === 'manual' ? (
+                            <div className="submission-table-actions remarks-detail-actions">
+                              <button
+                                type="button"
+                                className="ghost danger-button"
+                                onClick={() => onDeleteManualRemark(remarkEntry)}
+                                disabled={deleteState.deleting}
+                              >
+                                {deleteState.deleting ? 'Sletter...' : 'Slett remark'}
+                              </button>
+                              {deleteState.error ? (
+                                <small className="forms-error">{deleteState.error}</small>
+                              ) : null}
+                            </div>
                           ) : null}
                           {Array.isArray(remarkEntry.images) && remarkEntry.images.length > 0 ? (
                             <div className="remarks-image-list">
@@ -7361,7 +7974,8 @@ function FormPage() {
                             </div>
                           ) : null}
                         </article>
-                      ))}
+                        )
+                      })}
                     </div>
                   ) : null}
                 </article>

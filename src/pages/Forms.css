@@ -2299,6 +2299,43 @@
   flex-wrap: wrap;
 }
 
+.remarks-category-admin {
+  display: grid;
+  gap: 8px;
+}
+
+.remarks-category-admin .review-answer-label,
+.remarks-category-admin .question-help {
+  margin: 0;
+}
+
+.remarks-category-admin-list {
+  display: grid;
+  gap: 8px;
+}
+
+.remarks-category-admin-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.remarks-category-modal .submission-modal-content {
+  padding-top: 16px;
+}
+
+.remarks-category-modal-content {
+  display: grid;
+  gap: 12px;
+}
+
+.remarks-category-modal-content .review-answer-value,
+.remarks-category-modal-content .review-pending-note {
+  margin: 0;
+}
+
 .remarks-category-chip {
   padding: 5px 10px;
   background: rgba(24, 44, 60, 0.08);
@@ -2358,6 +2395,10 @@
 }
 
 .remarks-detail-badges {
+  justify-content: flex-start;
+}
+
+.remarks-detail-actions {
   justify-content: flex-start;
 }
 
