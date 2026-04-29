@@ -323,6 +323,11 @@ function App() {
           path="/admin/leverandører"
           element={withPageLoader(<AdminLocations />)}
         />
+        {/* ✅ RESTORED: Financial report route */}
+        <Route
+          path="/admin/financial-report"
+          element={withPageLoader(<FinancialReport />)}
+        />
         <Route path="/sales" element={withPageLoader(<Sales />)} />
         <Route path="/skjema" element={withPageLoader(<Forms />)} />
         <Route path="/skjema/:formSlug" element={withPageLoader(<RoutedFormPage />)} />
@@ -360,7 +365,7 @@ function App() {
         />
         <Route
           path="/skjema/:formSlug/historikk"
-          element={<Navigate replace to="..\/analyse" relative="path" />}
+          element={<Navigate replace to="../analyse" relative="path" />}
         />
         <Route
           path="/skjema/:formSlug/edit"
