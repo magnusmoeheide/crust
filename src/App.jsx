@@ -27,6 +27,7 @@ import prosess1200 from "./assets/optimized/prosess-1200.png";
 import "./App.css";
 import Varsling from "./pages/Varsling";
 
+// Pages (lazy loaded)
 const Apply = lazy(() => import("./pages/Apply"));
 const Locations = lazy(() => import("./pages/Locations"));
 const Partners = lazy(() => import("./pages/Partners"));
@@ -42,6 +43,9 @@ const Admin = lazy(() => import("./pages/Admin"));
 const AdminLocations = lazy(() => import("./pages/AdminLocations"));
 const Publications = lazy(() => import("./pages/Publications"));
 const Sales = lazy(() => import("./pages/Sales"));
+
+// ✅ FIX ADDED: Missing import that caused crash
+const FinancialReport = lazy(() => import("./pages/FinancialReport"));
 
 function withPageLoader(element) {
   return (
@@ -96,193 +100,6 @@ function Home() {
               </a>
             </div>
           </div>
-          <div className="hero-media">
-            <img
-              className="hero-main"
-              src={pizza2_960}
-              srcSet={`${pizza2_480} 480w, ${pizza2_960} 960w, ${pizza2_1600} 1600w`}
-              sizes="(max-width: 700px) 92vw, (max-width: 1200px) 50vw, 700px"
-              alt="Fersk pizza på en treplate"
-              decoding="async"
-              fetchPriority="high"
-            />
-          </div>
-          <div className="hero-notes">
-            <span>
-              <FontAwesomeIcon icon={faAnglesRight} /> Tidligere Toastmasters
-            </span>
-            <span>
-              <FontAwesomeIcon icon={faChildReaching} /> Ansetter 15 til 19 år
-            </span>
-            <span>
-              <FontAwesomeIcon icon={faSchool} /> Jobb både i og utenfor
-              skoletid
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section id="resultater" className="impact">
-        <div className="section-header impact-header-box">
-          <h2>
-            Resultater du kan smake <FontAwesomeIcon icon={faCircleCheck} />
-          </h2>
-          <p>
-            Crust kombinerer god opplæring, veiledning, tarifflønn og fleksible
-            vakter, slik at ungdom får en arena for mestring og erfaring, bygger
-            selvtillit, og får efaring som åpner dører videre i arbeidslivet.
-          </p>
-        </div>
-        <div className="impact-grid">
-          <article>
-            <h3>
-              <FontAwesomeIcon icon={faUserGraduate} /> 100 første jobber
-            </h3>
-            <p>
-              Vi ansetter 100 nye ungdommer i 2026 og gir dem sin aller første
-              lønn.
-            </p>
-          </article>
-          <article>
-            <h3>
-              <FontAwesomeIcon icon={faHandshake} /> Grundig opplæring
-            </h3>
-            <p>
-              Opplæring og kurs i kundeservice, matsikkerhet, renhold og ledelse
-              – rett ut i praksis.
-            </p>
-          </article>
-          <article>
-            <h3>
-              <FontAwesomeIcon icon={faTruckFast} /> Selvstendighet
-            </h3>
-            <p>
-              Hver ungdom får ansvar for egen vogn, fra åpning til stenging,
-              fordi vi vet at tillit bygger mestring.
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <section id="program" className="program">
-        <div className="program-copy">
-          <h2>
-            Ditt steg inn i arbeidslivet{" "}
-            <FontAwesomeIcon icon={faBuildingCircleCheck} />
-          </h2>
-          <p>
-            Hos oss utvikler ungdom sterke arbeidsvaner, fra punktlighet til god
-            kundeservice. De får tillit og ansvar i praksis. <br />
-            Her er det ungdommen som styrer vogna!
-          </p>
-          <img
-            className="program-image"
-            src={prosess600}
-            srcSet={`${prosess600} 600w, ${prosess1200} 1200w`}
-            sizes="(max-width: 900px) 90vw, 520px"
-            alt="Prosess for første jobb hos Crust"
-            loading="lazy"
-            decoding="async"
-          />
-        </div>
-        <div className="program-steps">
-          <div>
-            <h3>
-              <span className="step-number">1</span> Intervju
-            </h3>
-            <p>
-              Vi ser deg for den du er, ikke hva du har eller ikke har på CV-en.
-            </p>
-          </div>
-          <div>
-            <h3>
-              <span className="step-number">2</span> Tjen og lær
-            </h3>
-            <p>
-              Jobb med tarifflønn, veiledning og en fantastisk mulighet til å få
-              erfaring.
-            </p>
-          </div>
-          <div>
-            <h3>
-              <span className="step-number">3</span> Steget videre
-            </h3>
-            <p>
-              Få hjelp med CV, attest og oppfølging videre etterpå.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section id="historie" className="story">
-        <div className="story-milestones">
-          <div>
-            <span>2024</span>
-            <p>
-              Åpnet vår første vogn på Sognsvann i Oslo, hvor vi fikk testet ut
-              konseptet.
-            </p>
-          </div>
-          <div>
-            <span>2025</span>
-            <p>
-              Åpnet ytterligere 9 vogner. Nådde målet om 100 ungdommer i jobb på
-              ett år.
-            </p>
-          </div>
-          <div>
-            <span>Nå - 2026</span>
-            <p>
-              Vi dobler sesongvarigheten og antallet arbeidstimer for ungdommen.
-              Vi går fra toast til pizza for å styrke bunnlinjen og bygge en mer
-              bærekraftig bedrift.
-            </p>
-          </div>
-        </div>
-        <div className="story-card">
-          <h2 className="story-heading">
-            Fra Toastmasters til{" "}
-            <span className="no-break">Crust n' Trust</span>
-          </h2>
-          <div className="story-text">
-            <p>
-              Vi startet som Toastmasters, en lokalt forankret toastvogn med
-              store ambisjoner. Så fikk vi Frende Forsikring med på laget, som
-              så verdien i å gi muligheter til ungdom. <br />
-              <br />I år bytter vi navn til Crust, med pizza på menyen og enda
-              flere muligheter og arbeidstimer for ungdom.
-            </p>
-          </div>
-          <div className="story-image">
-            <img
-              src={alesund600}
-              srcSet={`${alesund600} 600w, ${alesund1200} 1200w`}
-              sizes="(max-width: 900px) 90vw, 520px"
-              alt="Utsikt over Ålesund"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-        </div>
-      </section>
-
-      <section id="visit" className="visit">
-        <div className="visit-card">
-          <h2>Sulten, nysgjerrig, eller kanskje begge?</h2>
-          <p>
-            Kom innom for den beste pizzaen, eller book oss for et arrangement.{" "}
-            <br />
-            Hver slice støtter en ungdom i sin aller første jobb!
-          </p>
-          <div className="visit-actions">
-            <a className="cta" href="/event">
-              Bestill servering <FontAwesomeIcon icon={faPizzaSlice} />
-            </a>
-
-            <a className="ghost" href="/plasseringer">
-              Hvor finner du oss <FontAwesomeIcon icon={faMapPin} />
-            </a>
-          </div>
         </div>
       </section>
     </>
@@ -305,12 +122,10 @@ function App() {
         <Route path="/om-oss" element={withPageLoader(<About />)} />
         <Route path="/omtale" element={withPageLoader(<Publications />)} />
         <Route path="/varsling" element={withPageLoader(<Varsling />)} />
-        <Route
-          path="/varig-hadeland"
-          element={withPageLoader(<VarigHadeland />)}
-        />
+        <Route path="/varig-hadeland" element={withPageLoader(<VarigHadeland />)} />
         <Route path="/obos" element={withPageLoader(<Obos />)} />
         <Route path="/admin" element={withPageLoader(<Admin />)} />
+
         <Route
           path="/admin/lokasjoner"
           element={<Navigate to="/admin/leverandører" replace />}
@@ -323,49 +138,16 @@ function App() {
           path="/admin/leverandører"
           element={withPageLoader(<AdminLocations />)}
         />
+
+        {/* Financial report (FIXED IMPORT) */}
+        <Route
+          path="/admin/financial-report"
+          element={withPageLoader(<FinancialReport />)}
+        />
+
         <Route path="/sales" element={withPageLoader(<Sales />)} />
         <Route path="/skjema" element={withPageLoader(<Forms />)} />
-        <Route path="/skjema/:formSlug" element={withPageLoader(<RoutedFormPage />)} />
-        <Route
-          path="/skjema/:formSlug/kvittering/:receiptToken"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/submissions"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/review/:submissionId"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/flagget"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/remarks"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/analyse"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/leveringsliste/innstillinger"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/leveringsliste"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
-        <Route
-          path="/skjema/:formSlug/historikk"
-          element={<Navigate replace to="..\/analyse" relative="path" />}
-        />
-        <Route
-          path="/skjema/:formSlug/edit"
-          element={withPageLoader(<RoutedFormPage />)}
-        />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

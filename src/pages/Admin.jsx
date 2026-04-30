@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { getAuth, getIdToken } from "firebase/auth";
+import { httpsCallable } from "firebase/functions";
 import {
   collection,
   deleteDoc,
@@ -10,8 +12,8 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../firebase";
 import { useAdminSession } from "../hooks/useAdminSession";
 import {
@@ -29,6 +31,7 @@ const JOB_PORTAL_STATUS_LABELS = {
   [JOB_PORTAL_STATUS_CLOSED]: "Closed",
   [JOB_PORTAL_STATUS_WAITLIST]: "Register email",
 };
+
 const PLANDAY_SETTINGS_DOC_ID = "plandayIntegration";
 
 function getPortalStatus(data) {
@@ -40,13 +43,11 @@ function getPortalStatus(data) {
   ) {
     return status;
   }
-
   if (typeof data?.acceptingApplications === "boolean") {
     return data.acceptingApplications
       ? JOB_PORTAL_STATUS_OPEN
       : JOB_PORTAL_STATUS_CLOSED;
   }
-
   return JOB_PORTAL_STATUS_OPEN;
 }
 
@@ -63,9 +64,7 @@ function getSettingsErrorMessage(error, fallbackMessage) {
 
 function formatDateTime(timestamp) {
   const date = timestamp?.toDate?.();
-  if (!date) {
-    return "Ukjent tidspunkt";
-  }
+  if (!date) return "Ukjent tidspunkt";
   return date.toLocaleString("nb-NO");
 }
 
@@ -81,28 +80,16 @@ function getIntegrationErrorMessage(error, fallbackMessage) {
 }
 
 function getZettleStatusLabel(status) {
-  if (status === "connected") {
-    return "Connected";
-  }
-  if (status === "error") {
-    return "Error";
-  }
-  if (status === "pending") {
-    return "Pending";
-  }
+  if (status === "connected") return "Connected";
+  if (status === "error") return "Error";
+  if (status === "pending") return "Pending";
   return "Not connected";
 }
 
 function getPlandayStatusLabel(status) {
-  if (status === "connected") {
-    return "Connected";
-  }
-  if (status === "error") {
-    return "Error";
-  }
-  if (status === "pending") {
-    return "Pending";
-  }
+  if (status === "connected") return "Connected";
+  if (status === "error") return "Error";
+  if (status === "pending") return "Pending";
   return "Not connected";
 }
 
@@ -119,8 +106,7 @@ function parseDepartmentIdsInput(value) {
 }
 
 function Admin() {
-  const { user, isAdmin, loading, error, signIn, signOutAdmin } =
-    useAdminSession();
+  const { user, isAdmin, loading, error, signIn, signOutAdmin } = useAdminSession();
   const [portalStatus, setPortalStatus] = useState(JOB_PORTAL_STATUS_OPEN);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState("");
@@ -146,6 +132,14 @@ function Admin() {
   const [plandaySettingsMessage, setPlandaySettingsMessage] = useState("");
   const [plandayDepartmentIdsInput, setPlandayDepartmentIdsInput] = useState("");
 
+  // ✅ Employee rates state
+  const [employees, setEmployees] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [rateInputs, setRateInputs] = useState({});
+  const [savingRateId, setSavingRateId] = useState("");
+  const [rateMessages, setRateMessages] = useState({});
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+
   useEffect(() => {
     async function loadSettings() {
       setSettingsLoading(true);
@@ -157,16 +151,12 @@ function Admin() {
         setPortalStatus(getPortalStatus(snapshot.data()));
       } catch (err) {
         setSettingsError(
-          getSettingsErrorMessage(
-            err,
-            "Kunne ikke hente innstillinger akkurat nå.",
-          ),
+          getSettingsErrorMessage(err, "Kunne ikke hente innstillinger akkurat nå."),
         );
       } finally {
         setSettingsLoading(false);
       }
     }
-
     loadSettings();
   }, []);
 
@@ -177,24 +167,16 @@ function Admin() {
       setWaitlistError("");
       return;
     }
-
     setWaitlistLoading(true);
     setWaitlistError("");
-
     const waitlistQuery = query(
       collection(db, JOB_PORTAL_WAITLIST_COLLECTION),
       orderBy("createdAt", "desc"),
     );
-
     const unsubscribe = onSnapshot(
       waitlistQuery,
       (snapshot) => {
-        setWaitlistEntries(
-          snapshot.docs.map((entry) => ({
-            id: entry.id,
-            ...entry.data(),
-          })),
-        );
+        setWaitlistEntries(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() })));
         setWaitlistLoading(false);
       },
       () => {
@@ -202,7 +184,6 @@ function Admin() {
         setWaitlistLoading(false);
       },
     );
-
     return unsubscribe;
   }, [isAdmin]);
 
@@ -214,10 +195,8 @@ function Admin() {
       setZettleMessage("");
       return undefined;
     }
-
     setZettleLoading(true);
     setZettleError("");
-
     const unsubscribe = onSnapshot(
       doc(db, "integrations", "zettle"),
       (snapshot) => {
@@ -229,7 +208,6 @@ function Admin() {
         setZettleLoading(false);
       },
     );
-
     return unsubscribe;
   }, [isAdmin]);
 
@@ -241,10 +219,8 @@ function Admin() {
       setPlandayMessage("");
       return undefined;
     }
-
     setPlandayLoading(true);
     setPlandayError("");
-
     const unsubscribe = onSnapshot(
       doc(db, "integrations", "planday"),
       (snapshot) => {
@@ -256,7 +232,6 @@ function Admin() {
         setPlandayLoading(false);
       },
     );
-
     return unsubscribe;
   }, [isAdmin]);
 
@@ -268,11 +243,9 @@ function Admin() {
       setPlandaySettingsMessage("");
       return;
     }
-
     async function loadPlandaySettings() {
       setPlandaySettingsLoading(true);
       setPlandaySettingsError("");
-
       try {
         const snapshot = await getDoc(
           doc(db, SITE_SETTINGS_COLLECTION, PLANDAY_SETTINGS_DOC_ID),
@@ -283,24 +256,97 @@ function Admin() {
         setPlandayDepartmentIdsInput(departmentIds.join(", "));
       } catch (err) {
         setPlandaySettingsError(
-          getSettingsErrorMessage(
-            err,
-            "Kunne ikke hente Planday-innstillingene akkurat nå.",
-          ),
+          getSettingsErrorMessage(err, "Kunne ikke hente Planday-innstillingene akkurat nå."),
         );
       } finally {
         setPlandaySettingsLoading(false);
       }
     }
-
     loadPlandaySettings();
   }, [isAdmin]);
+
+  // ✅ Load employees from Firestore in real-time
+  useEffect(() => {
+    if (!isAdmin) {
+      setEmployees([]);
+      return undefined;
+    }
+
+    setEmployeesLoading(true);
+
+    const unsubscribe = onSnapshot(
+      query(collection(db, "employees"), orderBy("name")),
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setEmployees(data);
+        // ✅ Initialize rate inputs with current values
+        const inputs = {};
+        data.forEach((emp) => {
+          inputs[emp.id] = emp.rate != null ? String(emp.rate) : "";
+        });
+        setRateInputs((prev) => {
+          const merged = { ...inputs };
+          // Keep any unsaved edits the user has made
+          Object.keys(prev).forEach((id) => {
+            if (prev[id] !== inputs[id]) merged[id] = prev[id];
+          });
+          return merged;
+        });
+        setEmployeesLoading(false);
+      },
+      (err) => {
+        console.error("Could not load employees:", err);
+        setEmployeesLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, [isAdmin]);
+
+  // ✅ Save a single employee's rate to Firestore
+  async function onSaveRate(empId) {
+    const rawValue = String(rateInputs[empId] || "").trim().replace(",", ".");
+    const rate = parseFloat(rawValue);
+
+    if (!rawValue || isNaN(rate) || rate < 0) {
+      setRateMessages((prev) => ({
+        ...prev,
+        [empId]: { type: "error", text: "Enter a valid hourly rate (e.g. 187.66)" },
+      }));
+      return;
+    }
+
+    setSavingRateId(empId);
+    setRateMessages((prev) => ({ ...prev, [empId]: null }));
+
+    try {
+      await updateDoc(doc(db, "employees", empId), {
+        rate,
+        rateUpdatedAt: serverTimestamp(),
+        rateUpdatedBy: user?.email || "admin",
+      });
+      setRateMessages((prev) => ({
+        ...prev,
+        [empId]: { type: "success", text: `✅ Saved ${rate.toFixed(2)} kr/hr` },
+      }));
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setRateMessages((prev) => ({ ...prev, [empId]: null }));
+      }, 3000);
+    } catch (err) {
+      setRateMessages((prev) => ({
+        ...prev,
+        [empId]: { type: "error", text: "Failed to save. Try again." },
+      }));
+    } finally {
+      setSavingRateId("");
+    }
+  }
 
   async function onSavePortalStatus() {
     setSaving(true);
     setSettingsError("");
     setStatusMessage("");
-
     try {
       await setDoc(
         doc(db, SITE_SETTINGS_COLLECTION, JOB_APPLICATIONS_DOC_ID),
@@ -312,16 +358,9 @@ function Admin() {
         },
         { merge: true },
       );
-      setStatusMessage(
-        `Status for /jobb er oppdatert til: ${JOB_PORTAL_STATUS_LABELS[portalStatus]}.`,
-      );
+      setStatusMessage(`Status for /jobb er oppdatert til: ${JOB_PORTAL_STATUS_LABELS[portalStatus]}.`);
     } catch (err) {
-      setSettingsError(
-        getSettingsErrorMessage(
-          err,
-          "Kunne ikke lagre innstillingen. Prøv igjen.",
-        ),
-      );
+      setSettingsError(getSettingsErrorMessage(err, "Kunne ikke lagre innstillingen. Prøv igjen."));
     } finally {
       setSaving(false);
     }
@@ -341,9 +380,7 @@ function Admin() {
 
   function onRequestDeleteWaitlistEntry(entry) {
     const confirmed = window.confirm("Sikker på at du vil slette registreringen?");
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
     onDeleteWaitlistEntry(entry.id);
   }
 
@@ -351,46 +388,30 @@ function Admin() {
     setZettleAction("connect");
     setZettleError("");
     setZettleMessage("");
-
     try {
       const createSession = httpsCallable(functions, "createZettleAuthSession");
       const result = await createSession();
       const authUrl = String(result.data?.authUrl || "");
-
-      if (!authUrl) {
-        throw new Error("No auth URL returned.");
-      }
-
+      if (!authUrl) throw new Error("No auth URL returned.");
       window.location.assign(authUrl);
     } catch (err) {
-      setZettleError(
-        getIntegrationErrorMessage(
-          err,
-          "Kunne ikke starte Zettle-innloggingen. Sjekk at functions og secrets er satt opp.",
-        ),
-      );
+      setZettleError(getIntegrationErrorMessage(err, "Kunne ikke starte Zettle-innloggingen."));
       setZettleAction("");
     }
   }
 
   async function onDisconnectZettle() {
     const confirmed = window.confirm("Koble fra Zettle og slette lagrede tokens?");
-    if (!confirmed) {
-      return;
-    }
-
+    if (!confirmed) return;
     setZettleAction("disconnect");
     setZettleError("");
     setZettleMessage("");
-
     try {
       const disconnect = httpsCallable(functions, "disconnectZettle");
       await disconnect();
       setZettleMessage("Zettle er koblet fra.");
     } catch (err) {
-      setZettleError(
-        getIntegrationErrorMessage(err, "Kunne ikke koble fra Zettle akkurat nå."),
-      );
+      setZettleError(getIntegrationErrorMessage(err, "Kunne ikke koble fra Zettle akkurat nå."));
     } finally {
       setZettleAction("");
     }
@@ -400,49 +421,51 @@ function Admin() {
     setPlandayAction("connect");
     setPlandayError("");
     setPlandayMessage("");
-
     try {
-      const createSession = httpsCallable(functions, "createPlandayAuthSession");
-      const result = await createSession();
-      const authUrl = String(result.data?.authUrl || "");
-
-      if (!authUrl) {
-        throw new Error("No auth URL returned.");
-      }
-
-      window.location.assign(authUrl);
-    } catch (err) {
-      setPlandayError(
-        getIntegrationErrorMessage(
-          err,
-          "Kunne ikke starte Planday-innloggingen. Sjekk at functions og secrets er satt opp.",
-        ),
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Not authenticated");
+      const idToken = await getIdToken(currentUser);
+      const response = await fetch(
+        "https://europe-west1-crust-11575.cloudfunctions.net/connectPlanday",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+        }
       );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+      const result = await response.json();
+      const employeeCount = Number(result?.employeeCount || 0);
+      setPlandayMessage(
+        employeeCount > 0
+          ? `Planday er koblet til. Fant ${employeeCount} ansatte.`
+          : "Planday er koblet til.",
+      );
+    } catch (err) {
+      setPlandayError(getIntegrationErrorMessage(err, "Kunne ikke koble til Planday."));
+    } finally {
       setPlandayAction("");
     }
   }
 
   async function onDisconnectPlanday() {
-    const confirmed = window.confirm("Koble fra Planday og slette lagrede tokens?");
-    if (!confirmed) {
-      return;
-    }
-
+    const confirmed = window.confirm("Markere Planday som frakoblet i admin?");
+    if (!confirmed) return;
     setPlandayAction("disconnect");
     setPlandayError("");
     setPlandayMessage("");
-
     try {
       const disconnect = httpsCallable(functions, "disconnectPlanday");
       await disconnect();
       setPlandayMessage("Planday er koblet fra.");
     } catch (err) {
-      setPlandayError(
-        getIntegrationErrorMessage(
-          err,
-          "Kunne ikke koble fra Planday akkurat nå.",
-        ),
-      );
+      setPlandayError(getIntegrationErrorMessage(err, "Kunne ikke koble fra Planday akkurat nå."));
     } finally {
       setPlandayAction("");
     }
@@ -452,7 +475,6 @@ function Admin() {
     setPlandaySettingsSaving(true);
     setPlandaySettingsError("");
     setPlandaySettingsMessage("");
-
     try {
       const departmentIds = parseDepartmentIdsInput(plandayDepartmentIdsInput);
       await setDoc(
@@ -468,10 +490,7 @@ function Admin() {
       setPlandaySettingsMessage("Planday-avdelinger er lagret.");
     } catch (err) {
       setPlandaySettingsError(
-        getSettingsErrorMessage(
-          err,
-          "Kunne ikke lagre Planday-innstillingene. Prøv igjen.",
-        ),
+        getSettingsErrorMessage(err, "Kunne ikke lagre Planday-innstillingene. Prøv igjen."),
       );
     } finally {
       setPlandaySettingsSaving(false);
@@ -479,9 +498,15 @@ function Admin() {
   }
 
   const zettleStatus = String(zettleConnection?.status || "not_connected").trim();
-  const plandayStatus = String(
-    plandayConnection?.status || "not_connected",
-  ).trim();
+  const plandayStatus = String(plandayConnection?.status || "not_connected").trim();
+
+  // ✅ Filter employees by rate status
+  const missingRateCount = employees.filter((e) => !e.rate).length;
+  const filteredEmployees = employees.filter((emp) => {
+    if (employeeFilter === "missing") return !emp.rate;
+    if (employeeFilter === "set") return !!emp.rate;
+    return true;
+  });
 
   return (
     <div className="admin-page">
@@ -495,34 +520,20 @@ function Admin() {
           Admin login
         </button>
       ) : null}
-      {!loading && !isAdmin && error ? (
-        <p className="forms-error">{error}</p>
-      ) : null}
+      {!loading && !isAdmin && error ? <p className="forms-error">{error}</p> : null}
 
       {isAdmin && (
         <section className="admin-panel">
           {loading ? <p>Kontrollerer innlogging...</p> : null}
-
           {isAdmin ? (
             <>
               <p>Innlogget som {user?.email}</p>
               <div className="admin-actions">
-                <Link className="admin-button" to="/skjema">
-                  Gå til /skjema
-                </Link>
-                <Link className="admin-button admin-button-secondary" to="/admin/leverandører">
-                  Leverandører
-                </Link>
-                <Link className="admin-button admin-button-secondary" to="/sales">
-                  Open sales
-                </Link>
-                <button
-                  type="button"
-                  className="admin-button admin-button-secondary"
-                  onClick={signOutAdmin}
-                >
-                  Logg ut
-                </button>
+                <Link className="admin-button" to="/skjema">Gå til /skjema</Link>
+                <Link className="admin-button admin-button-secondary" to="/admin/leverandører">Leverandører</Link>
+                <Link className="admin-button admin-button-secondary" to="/sales">Open sales</Link>
+                <Link className="admin-button admin-button-secondary" to="/admin/financial-report">Financial report</Link>
+                <button type="button" className="admin-button admin-button-secondary" onClick={signOutAdmin}>Logg ut</button>
               </div>
             </>
           ) : null}
@@ -532,67 +543,28 @@ function Admin() {
       {isAdmin ? (
         <section className="admin-panel">
           <h2>Zettle</h2>
-          <p className={`admin-status-badge is-${zettleStatus}`}>
-            {getZettleStatusLabel(zettleStatus)}
-          </p>
+          <p className={`admin-status-badge is-${zettleStatus}`}>{getZettleStatusLabel(zettleStatus)}</p>
           {zettleLoading ? <p>Laster Zettle-status...</p> : null}
           {zettleError ? <p className="forms-error">{zettleError}</p> : null}
           {zettleMessage ? <p className="forms-success">{zettleMessage}</p> : null}
-          <p className="admin-muted">
-            OAuth er satt opp via Firebase Functions. Tokens lagres serverside og vises
-            ikke i klienten.
-          </p>
+          <p className="admin-muted">OAuth er satt opp via Firebase Functions. Tokens lagres serverside og vises ikke i klienten.</p>
           <div className="admin-detail-list">
-            <p>
-              <strong>Connected by:</strong>{" "}
-              {zettleConnection?.connectedByEmail || "-"}
-            </p>
-            <p>
-              <strong>Connected at:</strong>{" "}
-              {formatDateTime(zettleConnection?.connectedAt)}
-            </p>
-            <p>
-              <strong>Organization UUID:</strong>{" "}
-              {zettleConnection?.organizationUuid || "-"}
-            </p>
-            <p>
-              <strong>User UUID:</strong> {zettleConnection?.zettleUserUuid || "-"}
-            </p>
-            <p>
-              <strong>Scope:</strong> {zettleConnection?.scope || "-"}
-            </p>
-            <p>
-              <strong>Last error:</strong> {zettleConnection?.lastError || "-"}
-            </p>
+            <p><strong>Connected by:</strong> {zettleConnection?.connectedByEmail || "-"}</p>
+            <p><strong>Connected at:</strong> {formatDateTime(zettleConnection?.connectedAt)}</p>
+            <p><strong>Organization UUID:</strong> {zettleConnection?.organizationUuid || "-"}</p>
+            <p><strong>User UUID:</strong> {zettleConnection?.zettleUserUuid || "-"}</p>
+            <p><strong>Scope:</strong> {zettleConnection?.scope || "-"}</p>
+            <p><strong>Last error:</strong> {zettleConnection?.lastError || "-"}</p>
           </div>
           <div className="admin-inline-actions">
-            <button
-              type="button"
-              className="admin-button"
-              onClick={onConnectZettle}
-              disabled={zettleAction === "connect"}
-            >
+            <button type="button" className="admin-button" onClick={onConnectZettle} disabled={zettleAction === "connect"}>
               {zettleAction === "connect" ? "Starter..." : "Connect Zettle"}
             </button>
-            <button
-              type="button"
-              className="admin-button admin-button-secondary"
-              onClick={onDisconnectZettle}
-              disabled={zettleAction === "disconnect" || zettleStatus === "not_connected"}
-            >
+            <button type="button" className="admin-button admin-button-secondary" onClick={onDisconnectZettle} disabled={zettleAction === "disconnect" || zettleStatus === "not_connected"}>
               {zettleAction === "disconnect" ? "Kobler fra..." : "Disconnect"}
             </button>
-            <a
-              className="admin-button admin-button-secondary"
-              href="https://developer.zettle.com/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open Zettle Developer Portal
-            </a>
-            <Link className="admin-button admin-button-secondary" to="/sales">
-              Open sales
-            </Link>
+            <a className="admin-button admin-button-secondary" href="https://developer.zettle.com/" target="_blank" rel="noreferrer">Open Zettle Developer Portal</a>
+            <Link className="admin-button admin-button-secondary" to="/sales">Open sales</Link>
           </div>
         </section>
       ) : null}
@@ -600,56 +572,28 @@ function Admin() {
       {isAdmin ? (
         <section className="admin-panel">
           <h2>Planday</h2>
-          <p className={`admin-status-badge is-${plandayStatus}`}>
-            {getPlandayStatusLabel(plandayStatus)}
-          </p>
+          <p className={`admin-status-badge is-${plandayStatus}`}>{getPlandayStatusLabel(plandayStatus)}</p>
           {plandayLoading ? <p>Laster Planday-status...</p> : null}
           {plandayError ? <p className="forms-error">{plandayError}</p> : null}
           {plandayMessage ? <p className="forms-success">{plandayMessage}</p> : null}
-          <p className="admin-muted">
-            Brukes for å hente lønnskost fra Time and Cost API. Tokens lagres
-            serverside i Firebase Functions.
-          </p>
+          <p className="admin-muted">Brukes for å hente lønnskost fra Time and Cost API. Tokens lagres serverside i Firebase Functions.</p>
           <div className="admin-detail-list">
-            <p>
-              <strong>Koblet til av:</strong>{" "}
-              {plandayConnection?.connectedByEmail || "-"}
-            </p>
-            <p>
-              <strong>Koblet til:</strong>{" "}
-              {formatDateTime(plandayConnection?.connectedAt)}
-            </p>
-            <p>
-              <strong>Scope:</strong> {plandayConnection?.scope || "-"}
-            </p>
-            <p>
-              <strong>Siste feil:</strong> {plandayConnection?.lastError || "-"}
-            </p>
+            <p><strong>Koblet til av:</strong> {plandayConnection?.connectedByEmail || "-"}</p>
+            <p><strong>Koblet til:</strong> {formatDateTime(plandayConnection?.connectedAt)}</p>
+            <p><strong>Scope:</strong> {plandayConnection?.scope || "-"}</p>
+            <p><strong>Ansatte funnet:</strong> {plandayConnection?.employeeCount ?? "-"}</p>
+            <p><strong>Siste feil:</strong> {plandayConnection?.lastError || "-"}</p>
           </div>
           <div className="admin-inline-actions">
-            <button
-              type="button"
-              className="admin-button"
-              onClick={onConnectPlanday}
-              disabled={plandayAction === "connect"}
-            >
-              {plandayAction === "connect" ? "Starter..." : "Koble til Planday"}
+            <button type="button" className="admin-button" onClick={onConnectPlanday} disabled={plandayAction === "connect"}>
+              {plandayAction === "connect" ? "Kobler til..." : "Connect Planday"}
             </button>
-            <button
-              type="button"
-              className="admin-button admin-button-secondary"
-              onClick={onDisconnectPlanday}
-              disabled={
-                plandayAction === "disconnect" || plandayStatus === "not_connected"
-              }
-            >
+            <button type="button" className="admin-button admin-button-secondary" onClick={onDisconnectPlanday} disabled={plandayAction === "disconnect" || plandayStatus === "not_connected"}>
               {plandayAction === "disconnect" ? "Kobler fra..." : "Koble fra"}
             </button>
           </div>
           <hr className="admin-divider" />
-          <label htmlFor="planday-department-ids">
-            Department IDs for lønnskost
-          </label>
+          <label htmlFor="planday-department-ids">Department IDs for lønnskost</label>
           <textarea
             id="planday-department-ids"
             className="admin-text-input"
@@ -659,29 +603,180 @@ function Admin() {
             disabled={plandaySettingsLoading || plandaySettingsSaving}
             placeholder="Eksempel: 101, 102, 205"
           />
-          <p className="admin-muted">
-            Legg inn én eller flere Planday department IDs, separert med komma
-            eller linjeskift. Disse brukes i /sales for å hente lønnskost per dag.
-          </p>
-          {plandaySettingsError ? (
-            <p className="forms-error">{plandaySettingsError}</p>
-          ) : null}
-          {plandaySettingsMessage ? (
-            <p className="forms-success">{plandaySettingsMessage}</p>
-          ) : null}
+          <p className="admin-muted">Legg inn én eller flere Planday department IDs, separert med komma eller linjeskift.</p>
+          {plandaySettingsError ? <p className="forms-error">{plandaySettingsError}</p> : null}
+          {plandaySettingsMessage ? <p className="forms-success">{plandaySettingsMessage}</p> : null}
           <div className="admin-inline-actions">
-            <button
-              type="button"
-              className="admin-button"
-              onClick={onSavePlandaySettings}
-              disabled={plandaySettingsLoading || plandaySettingsSaving}
-            >
+            <button type="button" className="admin-button" onClick={onSavePlandaySettings} disabled={plandaySettingsLoading || plandaySettingsSaving}>
               {plandaySettingsSaving ? "Lagrer..." : "Lagre avdelinger"}
             </button>
-            <Link className="admin-button admin-button-secondary" to="/sales">
-              Åpne salg
-            </Link>
+            <Link className="admin-button admin-button-secondary" to="/sales">Åpne salg</Link>
           </div>
+        </section>
+      ) : null}
+
+      {/* ✅ Employee Salary Rates Section */}
+      {isAdmin ? (
+        <section className="admin-panel">
+          <h2>Employee Hourly Rates</h2>
+          <p className="admin-muted">
+            Set the hourly wage for each employee. Rates are used to calculate salary
+            costs in the financial report. Employees are automatically synced from Planday.
+          </p>
+
+          {/* ✅ Summary badges */}
+          <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+            <span style={{
+              background: missingRateCount > 0 ? "#FCEBEB" : "#EAF3DE",
+              color: missingRateCount > 0 ? "#A32D2D" : "#3B6D11",
+              padding: "4px 12px",
+              borderRadius: "20px",
+              fontSize: "13px",
+              fontWeight: 500,
+            }}>
+              {missingRateCount > 0
+                ? `⚠️ ${missingRateCount} employee${missingRateCount > 1 ? "s" : ""} missing rates`
+                : "✅ All employees have rates set"}
+            </span>
+            <span style={{
+              background: "var(--color-background-secondary)",
+              padding: "4px 12px",
+              borderRadius: "20px",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+            }}>
+              {employees.length} total employees
+            </span>
+          </div>
+
+          {/* ✅ Filter buttons */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+            {["all", "missing", "set"].map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setEmployeeFilter(f)}
+                style={{
+                  padding: "4px 14px",
+                  borderRadius: "6px",
+                  border: "1px solid var(--color-border-secondary)",
+                  background: employeeFilter === f ? "var(--color-background-secondary)" : "transparent",
+                  fontWeight: employeeFilter === f ? 600 : 400,
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                {f === "all" ? "All" : f === "missing" ? "Missing rates" : "Rates set"}
+              </button>
+            ))}
+          </div>
+
+          {employeesLoading ? <p>Loading employees...</p> : null}
+
+          {!employeesLoading && filteredEmployees.length === 0 ? (
+            <p className="admin-muted">
+              {employeeFilter === "missing"
+                ? "✅ No employees missing rates!"
+                : "No employees found. Generate a financial report to sync employees from Planday."}
+            </p>
+          ) : null}
+
+          {!employeesLoading && filteredEmployees.length > 0 ? (
+            <div className="financial-table-wrap">
+              <table className="financial-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Employee</th>
+                    <th scope="col">Location</th>
+                    <th scope="col">Current Rate (kr/hr)</th>
+                    <th scope="col">New Rate</th>
+                    <th scope="col">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEmployees.map((emp) => {
+                    const isMissing = !emp.rate;
+                    const msg = rateMessages[emp.id];
+                    return (
+                      <tr
+                        key={emp.id}
+                        style={isMissing ? { background: "rgba(252,235,235,0.4)" } : {}}
+                      >
+                        <td>
+                          <span style={{ fontWeight: 500 }}>{emp.name || "(no name)"}</span>
+                          {isMissing ? (
+                            <span style={{
+                              marginLeft: "8px",
+                              fontSize: "11px",
+                              background: "#FCEBEB",
+                              color: "#A32D2D",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                            }}>
+                              No rate
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>{emp.location || "—"}</td>
+                        <td>
+                          {emp.rate
+                            ? `${Number(emp.rate).toFixed(2)} kr`
+                            : <span style={{ color: "#A32D2D" }}>Not set</span>}
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="e.g. 187.66"
+                            value={rateInputs[emp.id] ?? ""}
+                            onChange={(e) =>
+                              setRateInputs((prev) => ({
+                                ...prev,
+                                [emp.id]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") onSaveRate(emp.id);
+                            }}
+                            style={{
+                              width: "120px",
+                              padding: "6px 8px",
+                              border: "1px solid var(--color-border-secondary)",
+                              borderRadius: "6px",
+                              fontSize: "13px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <button
+                              type="button"
+                              className="admin-button"
+                              style={{ padding: "4px 12px", fontSize: "13px" }}
+                              onClick={() => onSaveRate(emp.id)}
+                              disabled={savingRateId === emp.id}
+                            >
+                              {savingRateId === emp.id ? "Saving..." : "Save"}
+                            </button>
+                            {msg ? (
+                              <span style={{
+                                fontSize: "12px",
+                                color: msg.type === "success" ? "#3B6D11" : "#A32D2D",
+                              }}>
+                                {msg.text}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -690,9 +785,7 @@ function Admin() {
           <h2>Søknader på /jobb</h2>
           {settingsLoading ? <p>Laster innstillinger...</p> : null}
           {settingsError ? <p className="forms-error">{settingsError}</p> : null}
-          <p>
-            Status: <strong>{JOB_PORTAL_STATUS_LABELS[portalStatus]}</strong>
-          </p>
+          <p>Status: <strong>{JOB_PORTAL_STATUS_LABELS[portalStatus]}</strong></p>
           <label htmlFor="job-portal-status">Velg status</label>
           <select
             id="job-portal-status"
@@ -705,12 +798,7 @@ function Admin() {
             <option value={JOB_PORTAL_STATUS_CLOSED}>Closed</option>
             <option value={JOB_PORTAL_STATUS_WAITLIST}>Register email</option>
           </select>
-          <button
-            type="button"
-            className="admin-button"
-            onClick={onSavePortalStatus}
-            disabled={settingsLoading || saving}
-          >
+          <button type="button" className="admin-button" onClick={onSavePortalStatus} disabled={settingsLoading || saving}>
             {saving ? "Lagrer..." : "Lagre status"}
           </button>
           {statusMessage ? <p className="forms-success">{statusMessage}</p> : null}
@@ -730,9 +818,7 @@ function Admin() {
               {waitlistEntries.map((entry) => (
                 <div key={entry.id} className="admin-email-item" role="listitem">
                   <p className="admin-email-contact">
-                    <span className="admin-email-name">
-                      {entry.name || "(mangler navn)"}
-                    </span>
+                    <span className="admin-email-name">{entry.name || "(mangler navn)"}</span>
                     {entry.email || "(mangler e-post)"}
                   </p>
                   <div className="admin-email-actions">
